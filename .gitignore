@@ -1,0 +1,28 @@
+# Node dependencies
+**/node_modules/
+
+# Local env files
+**/.env
+**/.env.local
+**/.env.production
+
+# Build outputs
+**/dist/
+**/build/
+
+# Credentials
+**/destination.json
+**/source.json
+
+# IDE files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# System files
+.DS_Store
+Thumbs.db
