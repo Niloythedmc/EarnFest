@@ -1,6 +1,7 @@
 import express from 'express';
 import admin, { db } from '../config/firebase.js';
 import { validateINITData } from '../middleware/auth.js';
+import axios from 'axios';
 import { checkChatMember } from '../utils/bot.js';
 import { parsePublicUsernameFromTelegramLink } from '../utils/telegramChats.js';
 import { incrementTaskCompletions, adjustTotalBalance } from '../utils/stats.js';
@@ -171,6 +172,30 @@ router.post('/verify', validateINITData, async (req, res) => {
       }
     }
 
+    // Call the external API if configured and task type is not channel/group
+    if (taskData.api && taskData.type !== 'channel' && taskData.type !== 'group') {
+      let apiUrl = taskData.api;
+      const placeholderRegex = /\{userId\}|\{\{userId\}\}|:userId/g;
+      if (placeholderRegex.test(apiUrl)) {
+        apiUrl = apiUrl.replace(placeholderRegex, sessionUserId.toString());
+      } else {
+        const separator = apiUrl.includes('?') ? '&' : '?';
+        apiUrl = `${apiUrl}${separator}userId=${sessionUserId}`;
+      }
+
+      try {
+        const apiResponse = await axios.get(apiUrl, { timeout: 10000 });
+        const dataStr = String(apiResponse.data).trim().toLowerCase();
+        const isCompleted = dataStr === 'true' || (typeof apiResponse.data === 'object' && apiResponse.data?.success === true);
+        if (!isCompleted) {
+          return res.status(400).json({ error: 'API verification failed. Task requirements not met.' });
+        }
+      } catch (err) {
+        console.error('Task API Verification Error:', err.message);
+        return res.status(400).json({ error: 'Failed to verify task status via API. Please try again later.' });
+      }
+    }
+
     const result = await completeTask(sessionUserId, taskId);
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error });
@@ -180,6 +205,96 @@ router.post('/verify', validateINITData, async (req, res) => {
   } catch (error) {
     console.error('Task Verify Error:', error);
     res.status(500).json({ error: 'Internal Error' });
+  }
+});
+
+// Verification API endpoint
+router.get('/verify-user', async (req, res) => {
+  try {
+    const { userId, type, target, tier } = req.query;
+    if (!userId) {
+      return res.json(false);
+    }
+
+    const userDoc = await db.collection('users').doc(userId.toString()).get();
+    if (!userDoc.exists) {
+      return res.json(false);
+    }
+
+    const userData = userDoc.data();
+    const targetVal = Number(target) || 0;
+
+    let result = false;
+
+    switch (type) {
+      case 'task': {
+        const count = (userData.taskHistory || []).length;
+        result = count >= targetVal;
+        break;
+      }
+      case 'invite': {
+        const count = Array.isArray(userData.referrals) 
+          ? userData.referrals.length 
+          : (Number(userData.referralCount) || 0);
+        result = count >= targetVal;
+        break;
+      }
+      case 'earn': {
+        const amount = Number(userData.totalEarned) || 0;
+        result = amount >= targetVal;
+        break;
+      }
+      case 'ads': {
+        const count = Number(userData.totalAdViews) || 0;
+        result = count >= targetVal;
+        break;
+      }
+      case 'game': {
+        const gameCount = (Number(userData.spinCount) || 0) + 
+                          (Number(userData.slotCount) || 0) + 
+                          (userData.activities || []).filter(a => a.type === 'spin_game' || a.type === 'slot_game').length;
+        result = gameCount >= targetVal;
+        break;
+      }
+      case 'coupon': {
+        const promoCount = (userData.activities || []).filter(a => a.type === 'promocode_reward').length;
+        result = promoCount >= targetVal;
+        break;
+      }
+      case 'deposit': {
+        const deposits = (userData.activities || [])
+          .filter(a => a.type === 'deposit')
+          .reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+        result = deposits >= targetVal;
+        break;
+      }
+      case 'tier': {
+        const tierRanks = {
+          free: 0,
+          cash: 1,
+          reward: 2,
+          bonus: 3,
+          profit: 4
+        };
+        const userTierRank = tierRanks[userData.tier || 'free'] || 0;
+        const targetTierRank = tierRanks[tier || 'free'] || 0;
+        result = userTierRank >= targetTierRank;
+        break;
+      }
+      case 'streak': {
+        const streak = Number(userData.dailyStreak) || 0;
+        result = streak >= targetVal;
+        break;
+      }
+      default:
+        result = false;
+        break;
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Verify User Error:', error);
+    return res.json(false);
   }
 });
 

@@ -9,15 +9,12 @@ import withdrawRoutes from './routes/withdrawRoutes.js';
 import botRoutes from './routes/botRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import promocodeRoutes from './routes/promocodeRoutes.js';
-import pvpRoutes from './routes/pvpRoutes.js';
-import minesRoutes from './routes/minesRoutes.js';
 import contestRoutes from './routes/contestRoutes.js';
 import streakRoutes from './routes/streakRoutes.js';
 import promoteRoutes from './routes/promoteRoutes.js';
 import partnerRoutes from './routes/partnerRoutes.js';
 import { ensureStatsDocExists } from './utils/stats.js';
 import { startPaymentScanner } from './utils/paymentScanner.js';
-import pvpManager from './utils/pvpManager.js';
 import contestManager from './utils/contestManager.js';
 
 dotenv.config();
@@ -57,8 +54,6 @@ app.use('/api/bot', botRoutes);
 app.use('/api/walletfather', botRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/promocodes', promocodeRoutes);
-app.use('/api/pvp', pvpRoutes);
-app.use('/api/mines', minesRoutes);
 app.use('/api/contests', contestRoutes);
 app.use('/api/user', streakRoutes);
 app.use('/api/promote', promoteRoutes);
@@ -122,6 +117,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   ensureStatsDocExists(); // Initialize AppStats doc if missing
   startPaymentScanner(); // Start background blockchain scanner
-  pvpManager.start(); // Start PvP Wheel game loop
   startContestRewardChecker(); // Start contest auto-reward checker
 });

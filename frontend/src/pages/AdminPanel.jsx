@@ -48,7 +48,6 @@ const AdminPanel = () => {
   const [sendSummary, setSendSummary] = useState(null);
   const [currentBroadcastId, setCurrentBroadcastId] = useState(null);
   const [broadcastProgress, setBroadcastProgress] = useState(null);
-  const [liveArenaStats, setLiveArenaStats] = useState({ activeUsers: 0 });
   const [gameAnalytics, setGameAnalytics] = useState(null);
   const [gameAnalyticsLoading, setGameAnalyticsLoading] = useState(false);
 
@@ -100,7 +99,7 @@ const AdminPanel = () => {
     free: 10000, cash: 8000, reward: 6000, bonus: 4000, profit: 2000, endTime: ''
   });
 
-  const [pvpConfig, setPvpConfig] = useState({ shortcuts: [0.1, 0.2, 0.5, 1], minJoin: 0.05, isActive: true });
+
   const [globalSettings, setGlobalSettings] = useState({ 
     tierLimits: {
       free: 10000, cash: 8000, reward: 6000, bonus: 4000, profit: 2000
@@ -224,13 +223,6 @@ const AdminPanel = () => {
     } finally {
       setOfferLoading(false);
     }
-  };
-
-  const fetchPvpConfig = async () => {
-    try {
-      const res = await axios.get(`${apiBase}/api/admin/pvp-config`, { headers });
-      setPvpConfig(res.data);
-    } catch { console.error('PVP Config Error'); }
   };
 
   const fetchGlobalSettings = async () => {
@@ -462,25 +454,13 @@ const AdminPanel = () => {
     }
     if (activeTab === 'platform') {
       fetchOffer();
-      fetchPvpConfig();
       fetchGlobalSettings();
     }
     if (activeTab === 'bot' && botMsgType === 'send') fetchForwardedMessage();
 
-    // Live Activity Polling (every 5s)
-    let liveInterval;
     if (activeTab === 'stats') {
       fetchGameAnalytics();
-      const fetchLive = async () => {
-        try {
-          const res = await axios.get(`${apiBase}/api/pvp/status`);
-          setLiveArenaStats({ activeUsers: res.data.activeUsers || 0 });
-        } catch { /* silent fail */ }
-      };
-      fetchLive();
-      liveInterval = setInterval(fetchLive, 5000);
     }
-    return () => clearInterval(liveInterval);
   }, [activeTab, botMsgType, leaderboardType]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
@@ -1208,7 +1188,6 @@ const AdminPanel = () => {
             {[
               { label: 'Total Users', value: formatCompactNumber(stats.totalUsers || 0), icon: <Users size={16} />, color: '#4a90e2' },
               { label: "Joined Today", value: formatCompactNumber(todayJoined), icon: <Users size={16} />, color: '#00c896' },
-              { label: 'Live Arena', value: formatCompactNumber(liveArenaStats.activeUsers), icon: <TrendingUp size={16} />, color: '#00d4ff' },
               { label: 'Active Today', value: formatCompactNumber(todayActive), icon: <Zap size={16} />, color: '#f5a623' },
               { label: 'Reward Ads', value: formatCompactNumber(stats.totalRewardAds || 0), icon: <BarChart2 size={16} />, color: '#b27cf7' },
               { label: 'Interstitials', value: formatCompactNumber(stats.totalInterstitials || 0), icon: <BarChart2 size={16} />, color: '#e56b6f' },
@@ -1246,15 +1225,11 @@ const AdminPanel = () => {
                 {Object.entries(gameAnalytics).map(([key, game]) => {
                   const icons = {
                     spin_wheel: <Coins size={16} />,
-                    mines: <Crosshair size={16} />,
-                    slots: <Dices size={16} />,
-                    pvp: <Crown size={16} />
+                    slots: <Dices size={16} />
                   };
                   const colors = {
                     spin_wheel: '#f5a623',
-                    mines: '#ff4d4d',
-                    slots: '#b27cf7',
-                    pvp: '#00d4ff'
+                    slots: '#b27cf7'
                   };
                   return (
                     <Card key={key} style={{ padding: '14px', background: 'rgba(255,255,255,0.015)' }}>
@@ -1347,93 +1322,154 @@ const AdminPanel = () => {
     </Stack>
   );
 
-  const handleSavePvpConfig = async () => {
-    try {
-      setLoading(true);
-      await axios.post(`${apiBase}/api/admin/pvp-config`, pvpConfig, { headers });
-      alert('PvP Config updated successfully!');
-    } catch {
-      alert('Failed to save PvP config');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // API Generator states
+  const [apiGenType, setApiGenType] = useState('task');
+  const [apiGenTarget, setApiGenTarget] = useState(1);
+  const [apiGenTier, setApiGenTier] = useState('free');
+  const [generatedApiUrl, setGeneratedApiUrl] = useState('');
 
-  const renderPvpTab = () => {
+  const renderApiGeneratorTab = () => {
+    const handleGenerate = () => {
+      const url = `${apiBase}/api/tasks/verify-user?type=${apiGenType}&target=${apiGenTarget}${apiGenType === 'tier' ? `&tier=${apiGenTier}` : ''}`;
+      setGeneratedApiUrl(url);
+    };
+
     return (
       <Stack gap={20}>
         <div className="flex-row-between">
-          <h3 style={{ fontWeight: '800', fontSize: '1rem', opacity: 0.8 }}>PVP GAME CONFIG</h3>
-          <Button 
-            onClick={handleSavePvpConfig} 
-            loading={loading}
-            style={{ width: 'auto', padding: '0 20px', height: '40px' }}
-          >
-            <Save size={18} style={{ marginRight: '8px' }} />
-            Save Changes
-          </Button>
+          <h3 style={{ fontWeight: '800', fontSize: '1rem', opacity: 0.8, letterSpacing: '1px' }}>VERIFICATION API GENERATOR</h3>
         </div>
 
-        <Card style={{ padding: '20px' }}>
-          <Stack gap={20}>
-            <div style={{ paddingTop: '5px' }}>
-              <div className="flex-row-between">
-                <div>
-                  <div style={{ fontWeight: '700' }}>Active Status</div>
-                  <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>Enable or disable PvP entry</div>
-                </div>
-                <button 
-                  onClick={() => setPvpConfig({ ...pvpConfig, isActive: !pvpConfig.isActive })}
-                  style={{ 
-                    width: '60px', 
-                    height: '30px', 
-                    borderRadius: '15px', 
-                    background: pvpConfig.isActive ? 'var(--success)' : 'rgba(255,255,255,0.1)',
-                    position: 'relative',
-                    border: 'none',
-                    transition: '0.3s'
-                  }}
-                >
-                  <div style={{ 
-                    width: '24px', 
-                    height: '24px', 
-                    borderRadius: '12px', 
-                    background: '#fff', 
-                    position: 'absolute', 
-                    top: '3px',
-                    left: pvpConfig.isActive ? '33px' : '3px',
-                    transition: '0.3s'
-                  }} />
-                </button>
-              </div>
+        <Card style={{ padding: '24px' }}>
+          <Stack gap={16}>
+            <div className="stack-vertical" style={{ gap: '6px' }}>
+              <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Requirement Type</label>
+              <select
+                value={apiGenType}
+                onChange={(e) => setApiGenType(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--glass-border)',
+                  color: 'white',
+                  borderRadius: '12px',
+                  fontSize: '0.9rem'
+                }}
+              >
+                <option value="task">Tasks Completed</option>
+                <option value="invite">Invited Users (Referrals)</option>
+                <option value="earn">Total Earned ($FEST)</option>
+                <option value="ads">Ads Viewed</option>
+                <option value="game">Games Played (Lucky Spin/Slots)</option>
+                <option value="coupon">Coupons (Promo Codes) Claimed</option>
+                <option value="deposit">Deposited Amount ($FEST)</option>
+                <option value="tier">Subscription Tier Level</option>
+                <option value="streak">Daily Streak Days</option>
+              </select>
             </div>
 
-            <div style={{ paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-               <label className="input-label">Minimum Join Amount ($)</label>
-               <div className="input-container" style={{ marginTop: '8px' }}>
-                  <TrendingUp size={18} className="gold-text" />
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    value={pvpConfig.minJoin}
-                    onChange={(e) => setPvpConfig({ ...pvpConfig, minJoin: parseFloat(e.target.value) || 0.05 })}
-                  />
-               </div>
-            </div>
+            {apiGenType === 'tier' ? (
+              <div className="stack-vertical" style={{ gap: '6px' }}>
+                <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Target Tier</label>
+                <select
+                  value={apiGenTier}
+                  onChange={(e) => setApiGenTier(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'white',
+                    borderRadius: '12px',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  <option value="free">Free Fest</option>
+                  <option value="cash">Cash Fest</option>
+                  <option value="reward">Reward Fest</option>
+                  <option value="bonus">Bonus Fest</option>
+                  <option value="profit">Profit Fest</option>
+                </select>
+              </div>
+            ) : (
+              <div className="stack-vertical" style={{ gap: '6px' }}>
+                <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
+                  Target {apiGenType === 'earn' || apiGenType === 'deposit' ? 'Amount ($FEST)' : 'Count'}
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={apiGenTarget}
+                  onChange={(e) => setApiGenTarget(Number(e.target.value) || 1)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'white',
+                    borderRadius: '12px',
+                    fontSize: '0.9rem'
+                  }}
+                />
+              </div>
+            )}
+
+            <Button
+              onClick={handleGenerate}
+              style={{
+                background: 'linear-gradient(135deg, var(--primary-gold), #d4af37)',
+                color: '#000',
+                fontWeight: '900',
+                height: '44px',
+                marginTop: '10px'
+              }}
+            >
+              Generate Verification API
+            </Button>
           </Stack>
         </Card>
 
-        <Card style={{ padding: '20px', background: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
-          <div className="flex-row" style={{ gap: '12px' }}>
-            <Zap size={24} color="#ff8c00" />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: '800', fontSize: '0.9rem', color: '#ff8c00' }}>Live PvP Stats</div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
-                 Currently <span style={{ fontWeight: '900', color: '#fff' }}>{liveArenaStats.activeUsers}</span> participants are in the lobby.
-              </div>
+        {generatedApiUrl && (
+          <Card style={{ padding: '20px', border: '1px solid var(--primary-gold)' }} className="glitter-border">
+            <div style={{ fontWeight: '800', fontSize: '0.85rem', marginBottom: '8px', color: 'var(--primary-gold)' }}>GENERATED VERIFICATION API URL:</div>
+            <div style={{
+              background: 'rgba(0,0,0,0.4)',
+              padding: '14px',
+              borderRadius: '12px',
+              fontFamily: 'monospace',
+              fontSize: '0.8rem',
+              wordBreak: 'break-all',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px'
+            }}>
+              <span>{generatedApiUrl}</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedApiUrl);
+                  toast.success('API URL copied to clipboard!');
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary-gold)',
+                  cursor: 'pointer',
+                  padding: '4px'
+                }}
+              >
+                <Copy size={16} />
+              </button>
             </div>
-          </div>
-        </Card>
+            <p className="text-sm-muted" style={{ fontSize: '0.7rem', marginTop: '10px', lineHeight: '1.4' }}>
+              💡 <b>How to use:</b> Copy this URL and paste it into the <b>Verification API</b> field when creating or editing a task. 
+              The system will automatically substitute <code>{"{userId}"}</code> placeholder or append <code>userId=YOUR_ID</code> to verify completion status.
+            </p>
+          </Card>
+        )}
       </Stack>
     );
   };
@@ -2494,6 +2530,7 @@ const AdminPanel = () => {
         {[
           { id: 'platform', Icon: Settings, label: 'Platform' },
           { id: 'tasks', Icon: CheckSquare, label: 'Tasks' },
+          { id: 'apiGenerator', Icon: Globe, label: 'API Gen' },
           { id: 'promos', Icon: Gift, label: 'Promos' },
           { id: 'referralLinks', Icon: LinkIcon, label: 'Referral Links' },
           { id: 'leaderboard', Icon: TrendingUp, label: 'Leaderboard' },
@@ -2532,12 +2569,10 @@ const AdminPanel = () => {
           <div style={{ padding: '30px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             {renderOffersTab()}
           </div>
-          <div style={{ padding: '30px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            {renderPvpTab()}
-          </div>
         </Stack>
       )}
       {activeTab === 'tasks' && renderTaskTab()}
+      {activeTab === 'apiGenerator' && renderApiGeneratorTab()}
       {activeTab === 'promos' && renderPromoTab()}
       {activeTab === 'referralLinks' && renderReferralTab()}
       {activeTab === 'leaderboard' && renderLeaderboardTab()}
@@ -2848,6 +2883,17 @@ const AdminPanel = () => {
                               </div>
                             </>
                           )}
+                        {activeTab === 'tasks' && editingItem.type !== 'channel' && editingItem.type !== 'group' && (
+                          <div className="stack-vertical" style={{ gap: '6px', marginTop: '10px' }}>
+                            <label style={{ fontSize: '0.7rem', opacity: 0.5 }}>Verification API (Optional)</label>
+                            <input 
+                              placeholder="https://yourdomain.com/verify?userId={userId}" 
+                              value={editingItem.api || ''} 
+                              onChange={e => setEditingItem({ ...editingItem, api: e.target.value })} 
+                              style={{ background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', fontSize: '0.8rem' }} 
+                            />
+                          </div>
+                        )}
                       </Stack>
                     </div>
 

@@ -22,25 +22,11 @@ const GamesPage = () => {
       image: '/Wheel.png'
     },
     {
-      id: 'mines',
-      title: 'Mines Game',
-      labelKey: 'mines',
-      path: '/mines',
-      image: '/Mine.png'
-    },
-    {
       id: 'slots',
       title: 'Slot Machine',
       labelKey: 'slots',
       path: '/slots',
       image: '/Slot.png'
-    },
-    {
-      id: 'pvp',
-      title: 'PVP Arena',
-      labelKey: 'pvp',
-      path: '/pvp',
-      image: '/Pvp.png'
     },
   ];
 

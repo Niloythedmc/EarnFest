@@ -21,10 +21,8 @@ const UpgradePage = lazy(() => import('./pages/UpgradePage'));
 const WithdrawPage = lazy(() => import('./pages/WithdrawPage'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
-const PvpPage = lazy(() => import('./pages/PvpPage'));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const GamesPage = lazy(() => import('./pages/GamesPage'));
-const MinesPage = lazy(() => import('./pages/MinesPage'));
 const SlotPage = lazy(() => import('./pages/SlotPage'));
 const PromotePage = lazy(() => import('./pages/PromotePage'));
 const OnlyTaskPage = lazy(() => import('./pages/OnlyTaskPage'));
@@ -117,10 +115,8 @@ function AppShell() {
         case 'ranks': navigate('/leaderboard'); break;
         case 'tiers': navigate('/upgrade'); break;
         case 'spin': navigate('/spin'); break;
-        case 'mines': navigate('/mines'); break;
         case 'games': navigate('/games'); break;
         case 'watch': navigate('/tasks'); break;
-        case 'pvp': navigate('/pvp'); break;
         case 'profile': navigate('/profile'); break;
         case 'slots': navigate('/slots'); break;
         case 'withdraw': navigate('/withdraw?tab=withdraw'); break;
@@ -149,7 +145,7 @@ function AppShell() {
     return () => tg.BackButton.offClick(handleBack);
   }, [location.pathname, navigate, tg]);
 
-  const hideNavbarRoutes = ['/spin', '/withdraw', '/upgrade', '/mines'];
+  const hideNavbarRoutes = ['/spin', '/withdraw', '/upgrade'];
   const showNavbar = !hideNavbarRoutes.includes(location.pathname) && !isMaintenance;
 
   // --- Ban System Interceptor ---
@@ -301,7 +297,6 @@ function AppShell() {
             <Route path="/" element={<Home />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/games" element={<GamesPage />} />
-            <Route path="/mines" element={<MinesPage />} />
             <Route path="/spin" element={<SpinWheel />} />
             <Route path="/slots" element={<SlotPage />} />
             <Route path="/refer" element={<ReferralPage />} />
@@ -310,7 +305,6 @@ function AppShell() {
             <Route path="/withdraw" element={<WithdrawPage />} />
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/pvp" element={<PvpPage />} />
             <Route path="/promote" element={<PromotePage />} />
             <Route path="/promote/only-task" element={<OnlyTaskPage />} />
             <Route path="/promote/featured" element={<FeaturedTaskPage />} />

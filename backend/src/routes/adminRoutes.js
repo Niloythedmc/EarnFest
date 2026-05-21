@@ -377,16 +377,14 @@ router.get('/game-analytics', async (req, res) => {
     if (!doc.exists) return res.json({ games: {} });
 
     const data = doc.data();
-    const gamePlays = data.gamePlays || { spin_wheel: 0, mines: 0, slots: 0, pvp: 0 };
+    const gamePlays = data.gamePlays || { spin_wheel: 0, slots: 0 };
     const gameActiveUsersRaw = data.gameActiveUsers || {};
     const todayKey = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
     // Build per-game analytics with total plays and active users today
     const GAME_LABELS = {
       spin_wheel: 'Lucky Spin',
-      mines: 'Mines Game',
-      slots: 'Slot Machine',
-      pvp: 'PVP Arena'
+      slots: 'Slot Machine'
     };
 
     const games = {};
@@ -1098,38 +1096,6 @@ router.delete('/offer', async (req, res) => {
   } catch (error) {
     console.error('Admin Offer Delete Error:', error);
     res.status(500).json({ error: 'Failed to end offer' });
-  }
-});
-
-// ---- PvP Config Management ---- //
-router.get('/pvp-config', async (req, res) => {
-  try {
-    const doc = await db.collection('admin').doc('pvpConfig').get();
-    if (doc.exists) {
-      res.json(doc.data());
-    } else {
-      // Return default config if not set
-      res.json({
-        shortcuts: [0.1, 0.2, 0.5, 1],
-        minJoin: 0.05,
-        isActive: true
-      });
-    }
-  } catch (error) {
-    res.status(500).json({ error: 'Failed' });
-  }
-});
-
-router.post('/pvp-config', async (req, res) => {
-  try {
-    const config = req.body;
-    await db.collection('admin').doc('pvpConfig').set({
-      ...config,
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed' });
   }
 });
 
