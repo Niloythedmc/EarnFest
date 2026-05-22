@@ -56,17 +56,7 @@ export const incrementRewardAds = () => {
   );
 };
 
-/**
- * Called when an interstitial ad is shown.
- */
-export const incrementInterstitials = () => {
-  return safeUpdate(() =>
-    STATS_REF().update({
-      totalInterstitials: admin.firestore.FieldValue.increment(1),
-      lastUpdated: new Date().toISOString()
-    })
-  );
-};
+// Interstitial ads tracking removed
 
 /**
  * Called when user spins the wheel.
@@ -183,7 +173,6 @@ export const ensureStatsDocExists = async () => {
       await STATS_REF().set({
         totalUsers: 0,
         totalRewardAds: 0,
-        totalInterstitials: 0,
         totalSpins: 0,
         totalRevenue: 0,
         totalWithdrawals: 0,
@@ -206,6 +195,7 @@ export const ensureStatsDocExists = async () => {
       if (data.activeUsers) fieldsToDelete.activeUsers = admin.firestore.FieldValue.delete();
       if (data.rewardAdEvents) fieldsToDelete.rewardAdEvents = admin.firestore.FieldValue.delete();
       if (data.interstitialEvents) fieldsToDelete.interstitialEvents = admin.firestore.FieldValue.delete();
+      if (data.totalInterstitials !== undefined) fieldsToDelete.totalInterstitials = admin.firestore.FieldValue.delete();
 
       if (Object.keys(fieldsToDelete).length > 0) {
         console.log('[AppStats] Pruning bloated historical fields...');
@@ -226,21 +216,6 @@ export const ensureStatsDocExists = async () => {
  * Stores basic info (ID, lowercase username, lowercase name, pic) for instant admin search.
  */
 export const updateUserSearchIndex = (userData) => {
-  const tid = userData.telegramId?.toString() || userData.id?.toString();
-  if (!tid) return;
-
-  const username = (userData.username || '').toLowerCase();
-  const name = (userData.firstName || '').toLowerCase();
-  const pic = userData.photoUrl || '';
-
-  return safeUpdate(() =>
-    USER_INDEX_REF().set({
-      [tid]: {
-        u: username,
-        n: name,
-        p: pic,
-        id: tid
-      }
-    }, { merge: true })
-  );
+  // Disabled to prevent "too many index entries for entity /appdata/users" error
+  return;
 };

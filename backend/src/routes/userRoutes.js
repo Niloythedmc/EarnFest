@@ -4,7 +4,7 @@ import { validateINITData } from '../middleware/auth.js';
 import { TIERS, REWARD_TYPES } from '../config/tiers.js';
 import { SPIN_WHEEL_PRIZES, SPIN_WHEEL_CONFIG, verifyProbabilityConfig } from '../config/gameProbabilities.js';
 import { sendTelegramPhoto } from '../utils/bot.js';
-import { recordNewUser, recordActiveUser, incrementSpins, incrementInterstitials, adjustTotalBalance, updateUserSearchIndex, incrementGamePlays, recordGameActiveUser } from '../utils/stats.js';
+import { recordNewUser, recordActiveUser, incrementSpins, adjustTotalBalance, updateUserSearchIndex, incrementGamePlays, recordGameActiveUser } from '../utils/stats.js';
 import { creditAdRewardForTelegramId } from '../utils/adReward.js';
 import { processReferralCommission, checkAndRewardActiveReferral } from '../utils/referralLogic.js';
 import { verifyInterstitialSession } from '../utils/antiAutoClickerManager.js';
@@ -154,7 +154,8 @@ router.post('/sync', validateINITData, async (req, res) => {
         dailyStreak: 0,
         lastStreakDate: null,
         streakClaimedMilestones: [],
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        lastActiveDate: new Date().toISOString().slice(0, 10)
       };
       try {
         await userRef.set(newUser);
@@ -243,8 +244,12 @@ router.post('/sync', validateINITData, async (req, res) => {
         }
       }
 
-      // Track active user daily (fire-and-forget)
-      recordActiveUser(actualId);
+      // Track active user daily if this is their first visit today (fire-and-forget)
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (existingData.lastActiveDate !== todayStr) {
+        updates.lastActiveDate = todayStr;
+        recordActiveUser(actualId);
+      }
 
       // Always update search index on entry to keep it fresh
       updateUserSearchIndex({ ...existingData, ...updates });
@@ -436,14 +441,14 @@ router.get('/reward/adsgram', async (req, res) => {
     const expected = process.env.ADSGRAM_REWARD_SECRET;
     const fallbackToken = 'aLIrUxf/Hy3O8ME7J8l0o8LQPzM1JBhwha9ENa3DSHE=';
     
-    const provided = req.query.token || req.query.secret || req.query.key;
+    const provided = req.query.token;
     const isValid = (expected && expected.length >= 8 && provided === expected) || (provided === fallbackToken);
     
     if (!isValid) {
       return res.status(403).send('Forbidden');
     }
 
-    const telegramId = req.query.telegramId || req.query.userid || req.query.userId;
+    const telegramId = req.query.userid;
     if (!telegramId) return res.status(400).send('Missing user id');
 
     const result = await creditAdRewardForTelegramId(telegramId);
@@ -693,15 +698,6 @@ router.post('/spin', validateINITData, async (req, res) => {
   }
 });
 
-// [NEW] Track interstitial ad shown (called from frontend AdsClient)
-router.post('/track-interstitial', validateINITData, async (req, res) => {
-  try {
-    incrementInterstitials();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Tracking failed' });
-  }
-});
 
 // Get User Profile Data
 router.get('/profile/:telegramId', validateINITData, async (req, res) => {

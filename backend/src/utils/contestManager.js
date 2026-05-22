@@ -90,24 +90,22 @@ class ContestManager {
 
   /**
    * Get active (ongoing) contest
-   * Uses a two-step approach: first tries compound query, falls back to in-memory filter
+   * Uses single-field range query + in-memory check to avoid composite index requirement
    */
   async getActiveContest() {
     const now = Date.now();
     try {
-      // Try compound query first (requires composite index)
       const snapshot = await db.collection(CONTESTS_COLLECTION)
-        .where('startTime', '<=', now)
         .where('endTime', '>', now)
-        .limit(1)
         .get();
       
-      if (snapshot.empty) return null;
-      const doc = snapshot.docs[0];
-      return { id: doc.id, ...doc.data() };
+      const active = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .find(c => c.startTime <= now);
+      return active || null;
     } catch (e) {
       // Fallback: get all contests and filter in memory
-      console.warn('Compound query failed, falling back to in-memory filter:', e.message);
+      console.warn('Query failed, falling back to in-memory filter:', e.message);
       const allSnap = await db.collection(CONTESTS_COLLECTION).get();
       const active = allSnap.docs
         .map(doc => ({ id: doc.id, ...doc.data() }))

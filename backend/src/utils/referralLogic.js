@@ -32,29 +32,31 @@ export async function processReferralCommission(friendId, amount, type, referrer
   const timestamp = new Date().toISOString();
   const referrerRef = db.collection('users').doc(String(referrerId));
 
+  const commissionEntry = {
+    type: 'referral_commission',
+    subType: type,
+    fromUser: String(friendId),
+    amount: commission,
+    timestamp,
+  };
+
   const updateData = {
     balance: admin.firestore.FieldValue.increment(commission),
     referralEarnings: admin.firestore.FieldValue.increment(commission),
     totalEarned: admin.firestore.FieldValue.increment(commission),
-    activities: admin.firestore.FieldValue.arrayUnion({
-      type: 'referral_commission',
-      subType: type,
-      fromUser: String(friendId),
-      amount: commission,
-      timestamp,
-    }),
   };
 
   if (tx) {
-    // Note: We use arrayUnion for commissions within tx because we often don't have the referrer's data loaded.
-    // Given commissions are less frequent than ads/pvp, this is usually safe.
-    tx.update(referrerRef, updateData);
+    tx.update(referrerRef, {
+      ...updateData,
+      activities: admin.firestore.FieldValue.arrayUnion(commissionEntry),
+    });
   } else {
     try {
       const snap = await referrerRef.get();
       if (snap.exists) {
         const activities = [...(snap.data().activities || [])];
-        activities.unshift(updateData.activities.arrayUnion || updateData.activities);
+        activities.unshift(commissionEntry);
         await referrerRef.update({
           ...updateData,
           activities: activities.slice(0, 30)

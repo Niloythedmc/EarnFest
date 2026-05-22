@@ -59,8 +59,6 @@ const AdminPanel = () => {
 
   // Data states
   const [users, setUsers] = useState([]);
-  const [userIndex, setUserIndex] = useState({});
-  const [isIndexLoading, setIsIndexLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [tasks, setTasks] = useState([]);
   const [taskSubTab, setTaskSubTab] = useState('active'); // 'top', 'active', 'paused', 'low'
@@ -201,17 +199,7 @@ const AdminPanel = () => {
     finally { setGameAnalyticsLoading(false); }
   };
 
-  const fetchUserIndex = async () => {
-    setIsIndexLoading(true);
-    try {
-      const res = await axios.get(`${apiBase}/api/admin/users/search-index`, { headers });
-      setUserIndex(res.data);
-    } catch (e) {
-      console.error('User index fetch error:', e);
-    } finally {
-      setIsIndexLoading(false);
-    }
-  };
+
 
   const fetchOffer = async () => {
     setOfferLoading(true);
@@ -294,16 +282,7 @@ const AdminPanel = () => {
     }
   };
 
-  const filteredUsers = useMemo(() => {
-    if (!searchQuery) return [];
-    const q = searchQuery.toLowerCase();
-    // Return array of user summaries that match the query
-    return Object.values(userIndex).filter(u => 
-      u.id?.includes(q) || 
-      u.u?.includes(q) || 
-      u.n?.includes(q)
-    ).slice(0, 50); // Show top 50 matches for performance
-  }, [searchQuery, userIndex]);
+
 
   // Contest functions
   const fetchContests = async () => {
@@ -446,7 +425,7 @@ const AdminPanel = () => {
     if (activeTab === 'tasks') fetchTasks();
     if (activeTab === 'promos') fetchPromos();
     if (activeTab === 'referralLinks') fetchReferralLinks();
-    if (activeTab === 'users') fetchUserIndex();
+    if (activeTab === 'users') { /* no-op: user index removed */ }
     if (activeTab === 'leaderboard') fetchLeaderboard(true);
     if (activeTab === 'contests') fetchContests();
     if (activeTab === 'plans') {
@@ -748,58 +727,15 @@ const AdminPanel = () => {
           onKeyPress={(e) => e.key === 'Enter' && handleUserSearch()}
           style={{ flex: 1, background: 'none', border: 'none', color: 'white', padding: '10px', fontSize: '0.9rem' }}
         />
-        {isIndexLoading ? (
-           <div style={{ padding: '0 15px' }}><Loader2 className="spin" size={16} opacity={0.5} /></div>
-        ) : (
-          <div className="flex-row" style={{ gap: '8px' }}>
-            <Button onClick={() => handleUserSearch()} style={{ width: 'auto', padding: '0 15px', height: '36px', fontSize: '0.8rem' }}>
-              {loading ? <Loader2 className="spin" size={16} /> : 'Force Search'}
-            </Button>
-            <Button 
-              onClick={async () => {
-                if(!window.confirm('Rebuild entire search index? This may take a moment.')) return;
-                setLoading(true);
-                try {
-                  await axios.get(`${apiBase}/api/admin/users/rebuild-index`, { headers });
-                  fetchUserIndex();
-                  alert('Index rebuilt successfully!');
-                } catch { alert('Rebuild failed'); }
-                finally { setLoading(false); }
-              }} 
-              style={{ width: 'auto', padding: '0 10px', height: '36px', fontSize: '0.7rem', background: 'rgba(255,255,255,0.05)', border: 'none' }}
-              title="Rebuild Search Index"
-            >
-              <RefreshCw size={14} />
-            </Button>
-          </div>
-        )}
+        <div className="flex-row" style={{ gap: '8px', paddingRight: '4px' }}>
+          <Button onClick={() => handleUserSearch()} style={{ width: 'auto', padding: '0 15px', height: '36px', fontSize: '0.8rem' }}>
+            {loading ? <Loader2 className="spin" size={16} /> : 'Search'}
+          </Button>
+        </div>
       </div>
 
       <div className="stack-vertical" style={{ gap: '10px' }}>
-        {/* If searching via index, show instant results */}
-        {searchQuery && filteredUsers.length > 0 && (
-          <>
-            <div className="text-sm-muted" style={{ fontSize: '0.7rem', padding: '0 5px' }}>Instant Results ({filteredUsers.length})</div>
-            {filteredUsers.map(u => (
-              <Card key={u.id} style={{ padding: '12px', cursor: 'pointer', border: '1px solid rgba(255,215,0,0.1)' }} onClick={() => handleUserSearch(u.id)}>
-                <div className="flex-row" style={{ gap: '12px' }}>
-                  {u.p ? (
-                    <img src={u.p} alt="" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} crossOrigin="anonymous" />
-                  ) : (
-                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Users size={18} opacity={0.3} />
-                    </div>
-                  )}
-                  <div>
-                    <div style={{ fontWeight: '700', fontSize: '0.85rem' }}>{u.n || 'User'} {u.u ? `(@${u.u})` : ''}</div>
-                    <div className="text-sm-muted" style={{ fontSize: '0.65rem' }}>ID: {u.id}</div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-            <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)', margin: '10px 0' }} />
-          </>
-        )}
+
 
         {/* Full Data Results (from backend search) */}
         {users.length > 0 && (
@@ -1190,7 +1126,6 @@ const AdminPanel = () => {
               { label: "Joined Today", value: formatCompactNumber(todayJoined), icon: <Users size={16} />, color: '#00c896' },
               { label: 'Active Today', value: formatCompactNumber(todayActive), icon: <Zap size={16} />, color: '#f5a623' },
               { label: 'Reward Ads', value: formatCompactNumber(stats.totalRewardAds || 0), icon: <BarChart2 size={16} />, color: '#b27cf7' },
-              { label: 'Interstitials', value: formatCompactNumber(stats.totalInterstitials || 0), icon: <BarChart2 size={16} />, color: '#e56b6f' },
               { label: 'Total Spins', value: formatCompactNumber(stats.totalSpins || 0), icon: <Coins size={16} />, color: '#f5a623' },
               { label: 'Pending W/D', value: formatCompactNumber(stats.pendingWithdrawals || 0), icon: <ArrowDownToLine size={16} />, color: '#ff4d4d' },
               { label: 'Total Revenue', value: `$${formatCompactNumber(stats.totalRevenue || 0)}`, icon: <DollarSign size={16} />, color: 'var(--page-accent)' },

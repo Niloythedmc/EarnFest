@@ -198,16 +198,6 @@ export const AdsClient = {
         const adsgramResult = await AdController.show();
         lastAdViewTime = Date.now();
 
-        // Track in AppStats silently
-        const tg = window.Telegram?.WebApp;
-        if (tg?.initData) {
-          fetch('https://eidfest.up.railway.app/api/user/track-interstitial', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-telegram-init-data': tg.initData },
-            body: JSON.stringify({}),
-          }).catch(() => {});
-        }
-
         // Step 2: Immediately show RichAds interstitial after Adsgram closes
         console.log('Adsgram interstitial done, now showing RichAds interstitial');
         await showRichAdsInterstitial();
