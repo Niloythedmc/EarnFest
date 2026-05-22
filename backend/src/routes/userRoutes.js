@@ -9,6 +9,7 @@ import { creditAdRewardForTelegramId } from '../utils/adReward.js';
 import { processReferralCommission, checkAndRewardActiveReferral } from '../utils/referralLogic.js';
 import { verifyInterstitialSession } from '../utils/antiAutoClickerManager.js';
 import { generateDeviceHash, checkMultiAccountOnDevice } from '../utils/deviceFingerprint.js';
+import { checkAdRewardMembership } from '../utils/telegramChats.js';
 import crypto from 'crypto';
 
 const router = express.Router();
@@ -22,6 +23,8 @@ router.post('/sync', validateINITData, async (req, res) => {
     const actualId = req.telegramUser?.id || telegramId;
 
     if (!actualId) return res.status(400).json({ error: 'Missing telegramId' });
+
+    const membership = await checkAdRewardMembership(actualId);
 
     const userRef = db.collection('users').doc(actualId.toString());
     const findReferralLinkByParam = async (param) => {
@@ -158,7 +161,7 @@ router.post('/sync', validateINITData, async (req, res) => {
         // Track new user in AppStats (fire-and-forget, handles quota internally)
         recordNewUser(actualId);
         updateUserSearchIndex(newUser);
-        return res.json(newUser);
+        return res.json({ ...newUser, isJoined: membership.ok });
       } catch (createError) {
         if (createError.code === 8 && createError.details?.includes('Quota exceeded')) {
           return res.status(429).json({
@@ -249,18 +252,18 @@ router.post('/sync', validateINITData, async (req, res) => {
       if (Object.keys(updates).length > 0) {
         try {
           await userRef.update(updates);
-          return res.json({ ...existingData, ...updates });
+          return res.json({ ...existingData, ...updates, isJoined: membership.ok });
         } catch (updateError) {
           if (updateError.code === 8 && updateError.details?.includes('Quota exceeded')) {
             // Return existing data without updates if quota exceeded
             console.log(`Skipped user update for ${actualId} due to quota exceeded`);
-            return res.json(existingData);
+            return res.json({ ...existingData, isJoined: membership.ok });
           }
           throw updateError;
         }
       }
 
-      return res.json(existingData);
+      return res.json({ ...existingData, isJoined: membership.ok });
     }
 
     const userData = userDoc.data();
@@ -285,7 +288,7 @@ router.post('/sync', validateINITData, async (req, res) => {
       }
     }
 
-    res.json(userData);
+    res.json({ ...userData, isJoined: membership.ok });
   } catch (error) {
     console.error('Sync Error:', error);
 
