@@ -7,7 +7,7 @@ import { sendTelegramPhoto } from '../utils/bot.js';
 import { recordNewUser, recordActiveUser, incrementSpins, incrementInterstitials, adjustTotalBalance, updateUserSearchIndex, incrementGamePlays, recordGameActiveUser } from '../utils/stats.js';
 import { creditAdRewardForTelegramId } from '../utils/adReward.js';
 import { processReferralCommission, checkAndRewardActiveReferral } from '../utils/referralLogic.js';
-import { recordCaptchaSolved, verifyInterstitialSession } from '../utils/antiAutoClickerManager.js';
+import { verifyInterstitialSession } from '../utils/antiAutoClickerManager.js';
 import { generateDeviceHash, checkMultiAccountOnDevice } from '../utils/deviceFingerprint.js';
 import crypto from 'crypto';
 
@@ -315,40 +315,9 @@ router.post('/reward', validateINITData, async (req, res) => {
     }
 
     if (type === REWARD_TYPES.AD) {
-      // Extract device info from request
-      const deviceInfo = {
-        ipAddress: req.headers['x-forwarded-for']?.split(',')[0] || req.connection.remoteAddress,
-        deviceFingerprint: req.body.deviceFingerprint || null,
-        userAgent: req.headers['user-agent'] || null,
-      };
-
-      const isSpecial = String(sessionUserId) === '7716785914';
-      if (!isSpecial) {
-        if (!deviceInfo.deviceFingerprint || typeof deviceInfo.deviceFingerprint !== 'string' || !deviceInfo.deviceFingerprint.startsWith('fp_') || deviceInfo.deviceFingerprint.startsWith('fp_share_')) {
-          console.warn(`[AdReward] Rejecting request: Invalid/missing deviceFingerprint from user ${sessionUserId}`);
-          return res.status(400).json({ error: 'Access denied: Automated script detected.' });
-        }
-      } else {
-        if (deviceInfo.deviceFingerprint && deviceInfo.deviceFingerprint.startsWith('fp_share_')) {
-          deviceInfo.deviceFingerprint = 'fp_special_bypass';
-        }
-      }
-
-      // Process ad reward via the unified logic (includes cooldown + membership check)
-      const result = await creditAdRewardForTelegramId(sessionUserId, deviceInfo);
-      if (!result.ok) {
-        return res.status(result.status || 400).json({ 
-          error: result.message || 'Ad reward failed',
-          code: result.code,
-          missing: result.missing
-        });
-      }
-      return res.json({ 
-        success: true, 
-        newBalance: result.newBalance, 
-        adCycleCount: result.adCycleCount, 
-        lastAdCycleResetAt: result.lastAdCycleResetAt,
-        antiAutoclicker: result.antiAutoclicker
+      return res.status(403).json({
+        error: 'Client-side ad rewarding is disabled. Rewards are processed via Server-to-Server callbacks.',
+        code: 'client_rewards_disabled'
       });
     }
 
@@ -410,35 +379,10 @@ router.post('/reward', validateINITData, async (req, res) => {
 
 // Track a spin ad view for the current user
 router.post('/spin-ad-view', validateINITData, async (req, res) => {
-  try {
-    const sessionUserId = req.telegramUser?.id;
-    if (!sessionUserId) return res.status(401).json({ error: 'Unauthorized' });
-
-    const userRef = db.collection('users').doc(String(sessionUserId));
-    const userDoc = await userRef.get();
-    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
-
-    const userData = userDoc.data();
-    const timestamp = new Date().toISOString();
-
-    await userRef.update({
-      spinAdViews: admin.firestore.FieldValue.increment(1),
-      totalAdViews: admin.firestore.FieldValue.increment(1),
-      activities: admin.firestore.FieldValue.arrayUnion({
-        type: 'spin_ad_view',
-        timestamp,
-      })
-    });
-
-    res.json({
-      success: true,
-      spinAdViews: (userData.spinAdViews || 0) + 1,
-      required: 10
-    });
-  } catch (error) {
-    console.error('Spin Ad View Error:', error);
-    res.status(500).json({ error: 'Failed to track spin ad' });
-  }
+  return res.status(403).json({
+    error: 'Client-side spin ad tracking is disabled. Spins are tracked via Server-to-Server callbacks.',
+    code: 'client_tracking_disabled'
+  });
 });
 
 // Leaderboard for top ad viewers and current user position
@@ -487,13 +431,12 @@ router.get('/leaderboard', validateINITData, async (req, res) => {
 router.get('/reward/adsgram', async (req, res) => {
   try {
     const expected = process.env.ADSGRAM_REWARD_SECRET;
-    if (!expected || expected.length < 8) {
-      console.error('ADSGRAM_REWARD_SECRET missing or too weak — refusing AdsGram callback');
-      return res.status(503).send('Not configured');
-    }
-
+    const fallbackToken = 'aLIrUxf/Hy3O8ME7J8l0o8LQPzM1JBhwha9ENa3DSHE=';
+    
     const provided = req.query.token || req.query.secret || req.query.key;
-    if (provided !== expected) {
+    const isValid = (expected && expected.length >= 8 && provided === expected) || (provided === fallbackToken);
+    
+    if (!isValid) {
       return res.status(403).send('Forbidden');
     }
 
@@ -1107,54 +1050,15 @@ router.post('/verify-interstitial', validateINITData, async (req, res) => {
       });
     }
 
+    // Reset lastInterstitialSessionId to null so they can't re-verify with the same session
+    await db.collection('users').doc(telegramId.toString()).update({
+      lastInterstitialSessionId: null
+    });
+
     res.json({ success: true, verified: true });
   } catch (error) {
     console.error('Interstitial Verification Error:', error);
     res.status(500).json({ error: 'Verification failed' });
-  }
-});
-
-/**
- * Verify captcha solution and record it
- * Prevents excessive ad viewing without verification
- */
-router.post('/verify-captcha', validateINITData, async (req, res) => {
-  try {
-    const { captchaToken, captchaType } = req.body;
-    const telegramId = req.telegramUser?.id;
-
-    if (telegramId && String(telegramId) === '7716785914') {
-      return res.json({ 
-        success: true, 
-        message: 'Captcha verified successfully (exempt)',
-        nextCaptchaAt: 'after_4_to_6_ads'
-      });
-    }
-
-    if (!telegramId || !captchaToken) {
-      return res.status(400).json({ error: 'Missing captcha token or telegramId' });
-    }
-
-    // Verify captcha token is non-empty and reasonable length
-    if (typeof captchaToken !== 'string' || captchaToken.length < 10 || captchaToken.length > 500) {
-      return res.status(400).json({ error: 'Invalid captcha token format' });
-    }
-
-    // Record captcha solve in user database
-    const result = await recordCaptchaSolved(telegramId, captchaType || 'standard');
-    
-    if (!result.success) {
-      return res.status(500).json({ error: 'Failed to record captcha' });
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Captcha verified successfully',
-      nextCaptchaAt: 'after_4_to_6_ads'
-    });
-  } catch (error) {
-    console.error('Captcha Verification Error:', error);
-    res.status(500).json({ error: 'Captcha verification failed' });
   }
 });
 

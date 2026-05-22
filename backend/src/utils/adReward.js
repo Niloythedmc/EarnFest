@@ -3,7 +3,7 @@ import { TIERS, REWARD_TYPES } from '../config/tiers.js';
 import { incrementRewardAds, adjustTotalBalance } from './stats.js';
 import { checkAdRewardMembership } from './telegramChats.js';
 import { processReferralCommission, checkAndRewardActiveReferral } from './referralLogic.js';
-import { shouldShowInterstitial, shouldShowCaptcha, recordInterstitialView, recordCaptchaSolved, incrementAdCounterSinceCaptcha, isSuspectedAutoClicker } from './antiAutoClickerManager.js';
+import { shouldShowInterstitial, recordInterstitialView, isSuspectedAutoClicker } from './antiAutoClickerManager.js';
 import { checkMultiAccountOnDevice, updateUserDeviceInfo } from './deviceFingerprint.js';
 
 /** Minimum milliseconds between ad rewards per user (client API + AdsGram S2S share this). */
@@ -129,6 +129,7 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       const updateData = {
         balance: admin.firestore.FieldValue.increment(rewardAmount),
         adsCountToday: admin.firestore.FieldValue.increment(1),
+        spinAdViews: admin.firestore.FieldValue.increment(1),
         adCycleCount: newCycleCount,
         lastAdCycleResetAt: newCycleCount >= AD_CYCLE_LIMIT ? now : (cycleCount === 0 ? now : cycleResetAt),
         totalAdViews: admin.firestore.FieldValue.increment(1),
@@ -151,7 +152,6 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
         telegramIdStr,
         adCycleCount: newCycleCount,
         lastAdCycleResetAt: updateData.lastAdCycleResetAt,
-        adCountSinceLastCaptcha: (userData.adCountSinceLastCaptcha || 0) + 1,
       };
     });
 
@@ -179,7 +179,6 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
 
     // Anti-autoclicker measures
     const { shouldShowInterstitial: showInterstitial, sessionId } = shouldShowInterstitial(telegramIdRaw);
-    const { shouldShowCaptcha: showCaptcha, requiredAdCount } = shouldShowCaptcha(outcome.adCountSinceLastCaptcha, telegramIdRaw);
 
     if (showInterstitial) {
       await recordInterstitialView(telegramIdRaw, sessionId);
@@ -204,8 +203,6 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       });
     }
 
-    await incrementAdCounterSinceCaptcha(telegramIdRaw);
-
     return {
       ok: true,
       newBalance: outcome.prevBalance + outcome.rewardAmount,
@@ -215,8 +212,6 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       antiAutoclicker: {
         shouldShowInterstitial: showInterstitial,
         interstitialSessionId: sessionId,
-        shouldShowCaptcha: showCaptcha,
-        adCountUntilCaptcha: Math.max(0, requiredAdCount - outcome.adCountSinceLastCaptcha),
       },
     };
   } catch (e) {

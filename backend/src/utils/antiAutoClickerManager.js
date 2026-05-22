@@ -9,8 +9,6 @@ import admin from 'firebase-admin';
  */
 
 export const INTERSTITIAL_PROBABILITY = 0.35; // 35% chance of interstitial after ad
-export const CAPTCHA_FREQUENCY = 5; // Show captcha after every 4-5 ads (randomized)
-
 export function shouldShowInterstitial(telegramId) {
   if (telegramId && String(telegramId) === '7716785914') {
     return {
@@ -27,32 +25,6 @@ export function shouldShowInterstitial(telegramId) {
   return {
     shouldShowInterstitial: shouldShow,
     sessionId: shouldShow ? sessionId : null,
-  };
-}
-
-/**
- * Determine if captcha should be shown before next ad
- * @param {number} adCountSinceLastCaptcha - Number of ads watched since last captcha
- * @param {string|number} telegramId - User's Telegram ID
- * @returns {object} { shouldShowCaptcha: boolean, requiredAdCount: number }
- */
-export function shouldShowCaptcha(adCountSinceLastCaptcha = 0, telegramId) {
-  if (telegramId && String(telegramId) === '7716785914') {
-    return {
-      shouldShowCaptcha: false,
-      requiredAdCount: 99999,
-    };
-  }
-  // Randomize captcha frequency between 4-6 ads
-  const randomThreshold = 4 + Math.floor(Math.random() * 3); // 4, 5, or 6
-  
-  const shouldShow = adCountSinceLastCaptcha >= randomThreshold;
-  
-  console.log(`[Captcha] Ads since last captcha: ${adCountSinceLastCaptcha}, Required: ${randomThreshold}, Show: ${shouldShow}`);
-  
-  return {
-    shouldShowCaptcha: shouldShow,
-    requiredAdCount: randomThreshold,
   };
 }
 
@@ -77,45 +49,6 @@ export async function recordInterstitialView(telegramId, sessionId) {
 }
 
 /**
- * Record captcha solve in user's document
- */
-export async function recordCaptchaSolved(telegramId, captchaType = 'standard') {
-  try {
-    const userRef = db.collection('users').doc(telegramId.toString());
-    
-    await userRef.update({
-      lastCaptchaSolvedAt: new Date().toISOString(),
-      captchaSolveCount: admin.firestore.FieldValue.increment(1),
-      adCountSinceLastCaptcha: 0, // Reset counter
-      lastCaptchaType: captchaType,
-    });
-    
-    return { success: true };
-  } catch (error) {
-    console.error('[CaptchaRecord] Error recording captcha solve:', error);
-    return { success: false, error };
-  }
-}
-
-/**
- * Increment ad counter since last captcha
- */
-export async function incrementAdCounterSinceCaptcha(telegramId) {
-  try {
-    const userRef = db.collection('users').doc(telegramId.toString());
-    
-    await userRef.update({
-      adCountSinceLastCaptcha: admin.firestore.FieldValue.increment(1),
-    });
-    
-    return { success: true };
-  } catch (error) {
-    console.error('[AdCounter] Error incrementing ad counter:', error);
-    return { success: false, error };
-  }
-}
-
-/**
  * Get user's anti-autoclicker stats
  */
 export async function getUserAntiAutoClickerStats(telegramId) {
@@ -131,10 +64,6 @@ export async function getUserAntiAutoClickerStats(telegramId) {
     return {
       lastInterstitialAt: data.lastInterstitialAt || null,
       interstitialViewCount: data.interstitialViewCount || 0,
-      lastCaptchaSolvedAt: data.lastCaptchaSolvedAt || null,
-      captchaSolveCount: data.captchaSolveCount || 0,
-      adCountSinceLastCaptcha: data.adCountSinceLastCaptcha || 0,
-      lastCaptchaType: data.lastCaptchaType || null,
     };
   } catch (error) {
     console.error('[AntiAutoClickerStats] Error fetching stats:', error);

@@ -25,7 +25,6 @@ import { AdsClient } from '../utils/AdsClient';
 import Skeleton from '../components/Skeleton';
 import { formatBalance } from '../utils/formatters';
 import InterstitialModal from '../components/InterstitialModal';
-import CaptchaModal from '../components/CaptchaModal';
 import { getStoredDeviceFingerprint } from '../utils/deviceFingerprint';
 
 
@@ -83,7 +82,6 @@ const TasksPage = () => {
   // Anti-autoclicker modals state
   const [showInterstitial, setShowInterstitial] = useState(false);
   const [interstitialSessionId, setInterstitialSessionId] = useState(null);
-  const [showCaptcha, setShowCaptcha] = useState(false);
 
   // Auto-watch mode for special user
   const [autoWatch, setAutoWatch] = useState(() => localStorage.getItem('earnfest_autowatch_7716785914') === 'true');
@@ -97,7 +95,6 @@ const TasksPage = () => {
     const isSpecialUser = user?.telegramId?.toString() === '7716785914';
     if (autoWatch && isSpecialUser) {
       if (showInterstitial) setShowInterstitial(false);
-      if (showCaptcha) setShowCaptcha(false);
 
       const originalAlert = window.alert;
       const originalConfirm = window.confirm;
@@ -241,7 +238,7 @@ const TasksPage = () => {
         clearInterval(textCleanerInterval);
       };
     }
-  }, [autoWatch, showInterstitial, showCaptcha, user?.telegramId]);
+  }, [autoWatch, showInterstitial, user?.telegramId]);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -579,7 +576,7 @@ const TasksPage = () => {
   };
 
   const AdTaskBanner = () => {
-    const { user, addReward, trackSpinAdView } = useUser();
+    const { user, refreshUser } = useUser();
     const { tiers } = useConfig();
     const { t } = useLanguage();
     const [adCycleCountdown, setAdCycleCountdown] = useState(0);
@@ -594,14 +591,11 @@ const TasksPage = () => {
         setAdCycleCountdown(0);
         return;
       }
-
       const calculateDiff = () => {
+        const resetTime = new Date(user.lastAdCycleResetAt).getTime();
         const now = Date.now();
-        const resetTime = typeof user.lastAdCycleResetAt === 'number' 
-          ? user.lastAdCycleResetAt 
-          : new Date(user.lastAdCycleResetAt).getTime();
-        const diff = (5 * 60 * 1000) - (now - resetTime);
-        return diff;
+        const cooldown = 5 * 60 * 1000;
+        return (resetTime + cooldown) - now;
       };
 
       const initialDiff = calculateDiff();
@@ -629,30 +623,15 @@ const TasksPage = () => {
       if (adCycleCountdown > 0 && !isSpecialUser) return;
       setIsAdLoading(true);
       try {
-        // Get device fingerprint
-        const deviceFingerprint = getStoredDeviceFingerprint();
-        
         await AdsClient.showRewardAd(async () => {
-          const result = await addReward('ad', 0, { deviceFingerprint });
-          if (result?.success) {
-            await trackSpinAdView();
-            
-            // Check if interstitial or captcha should be shown
-            if (result.antiAutoclicker) {
-              const { shouldShowInterstitial: showInt, interstitialSessionId: intSessId, shouldShowCaptcha: showCapt } = result.antiAutoclicker;
-              
-              // Show interstitial if needed (only if auto watch is off)
-              if (showInt && intSessId && !autoWatch) {
-                setInterstitialSessionId(intSessId);
-                setShowInterstitial(true);
-              }
-              
-              // Show captcha if needed (only if auto watch is off)
-              if (showCapt && !autoWatch) {
-                setShowCaptcha(true);
-              }
+          // Trigger a background refresh after 1.5 seconds to sync balance and check for interstitial
+          setTimeout(async () => {
+            const updatedUser = await refreshUser();
+            if (updatedUser?.lastInterstitialSessionId && !autoWatch) {
+              setInterstitialSessionId(updatedUser.lastInterstitialSessionId);
+              setShowInterstitial(true);
             }
-          }
+          }, 1500);
         });
       } catch (err) {
         if (!autoWatch) {
@@ -946,14 +925,7 @@ const TasksPage = () => {
         }}
       />
 
-      {/* Anti-Autoclicker Captcha Modal */}
-      <CaptchaModal
-        isOpen={showCaptcha}
-        onClose={() => setShowCaptcha(false)}
-        onCaptchaSolved={() => {
-          console.log('[TasksPage] Captcha solved');
-        }}
-      />
+
     </div>
   );
 };
