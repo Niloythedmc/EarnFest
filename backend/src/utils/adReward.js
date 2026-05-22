@@ -184,7 +184,7 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       await recordInterstitialView(telegramIdRaw, sessionId);
     }
 
-    incrementRewardAds();
+    incrementRewardAds(outcome.rewardAmount);
     adjustTotalBalance(outcome.rewardAmount);
 
     if (outcome.referredBy) {

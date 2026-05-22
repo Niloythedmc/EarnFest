@@ -44,13 +44,13 @@ export const recordActiveUser = (userId) => {
   );
 };
 
-/**
- * Called when a reward ad is completed.
- */
-export const incrementRewardAds = () => {
+export const incrementRewardAds = (amount = 0) => {
+  const dateKey = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   return safeUpdate(() =>
     STATS_REF().update({
       totalRewardAds: admin.firestore.FieldValue.increment(1),
+      [`dailyRewardAds_${dateKey}`]: admin.firestore.FieldValue.increment(1),
+      [`dailyAdEarnings_${dateKey}`]: admin.firestore.FieldValue.increment(amount),
       lastUpdated: new Date().toISOString()
     })
   );

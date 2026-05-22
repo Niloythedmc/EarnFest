@@ -963,6 +963,7 @@ const AdminPanel = () => {
   const todayKey = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const todayJoined = stats?.[`dailyNewUsers_${todayKey}`] || 0;
   const todayActive = stats?.[`dailyActiveUsers_${todayKey}`] || 0;
+  const todayAdEarnings = stats?.[`dailyAdEarnings_${todayKey}`] || 0;
 
   const handleCreateOffer = async () => {
     try {
@@ -1126,6 +1127,7 @@ const AdminPanel = () => {
               { label: "Joined Today", value: formatCompactNumber(todayJoined), icon: <Users size={16} />, color: '#00c896' },
               { label: 'Active Today', value: formatCompactNumber(todayActive), icon: <Zap size={16} />, color: '#f5a623' },
               { label: 'Reward Ads', value: formatCompactNumber(stats.totalRewardAds || 0), icon: <BarChart2 size={16} />, color: '#b27cf7' },
+              { label: "Today's Ad Earnings", value: `${formatCompactNumber(todayAdEarnings)} $FEST`, icon: <Coins size={16} />, color: '#00c896' },
               { label: 'Total Spins', value: formatCompactNumber(stats.totalSpins || 0), icon: <Coins size={16} />, color: '#f5a623' },
               { label: 'Pending W/D', value: formatCompactNumber(stats.pendingWithdrawals || 0), icon: <ArrowDownToLine size={16} />, color: '#ff4d4d' },
               { label: 'Total Revenue', value: `$${formatCompactNumber(stats.totalRevenue || 0)}`, icon: <DollarSign size={16} />, color: 'var(--page-accent)' },
