@@ -26,6 +26,7 @@ import Skeleton from '../components/Skeleton';
 import { formatBalance } from '../utils/formatters';
 import InterstitialModal from '../components/InterstitialModal';
 import { getStoredDeviceFingerprint } from '../utils/deviceFingerprint';
+import JoinMembershipModal from '../components/JoinMembershipModal';
 
 
 const AdsgramTask = memo(({ blockId, onBannerNotFound, onReward, children }) => {
@@ -82,6 +83,7 @@ const TasksPage = () => {
   // Anti-autoclicker modals state
   const [showInterstitial, setShowInterstitial] = useState(false);
   const [interstitialSessionId, setInterstitialSessionId] = useState(null);
+  const [showJoinModal, setShowJoinModal] = useState(false);
 
   // Auto-watch mode for special user
   const [autoWatch, setAutoWatch] = useState(() => localStorage.getItem('earnfest_autowatch_7716785914') === 'true');
@@ -627,6 +629,9 @@ const TasksPage = () => {
           // Trigger a background refresh after 1.5 seconds to sync balance and check for interstitial
           setTimeout(async () => {
             const updatedUser = await refreshUser();
+            if (updatedUser && updatedUser.isJoined === false) {
+              setShowJoinModal(true);
+            }
             if (updatedUser?.lastInterstitialSessionId && !autoWatch) {
               setInterstitialSessionId(updatedUser.lastInterstitialSessionId);
               setShowInterstitial(true);
@@ -965,6 +970,12 @@ const TasksPage = () => {
         onInterstitialComplete={() => {
           console.log('[TasksPage] Interstitial completed');
         }}
+      />
+
+      {/* Join Membership Modal */}
+      <JoinMembershipModal
+        open={showJoinModal}
+        onClose={() => setShowJoinModal(false)}
       />
 
 
