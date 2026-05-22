@@ -629,7 +629,8 @@ const TasksPage = () => {
           // Trigger a background refresh after 1.5 seconds to sync balance and check for interstitial
           setTimeout(async () => {
             const updatedUser = await refreshUser();
-            if (updatedUser && updatedUser.isJoined === false) {
+            const isJoined = updatedUser ? updatedUser.isJoined : user?.isJoined;
+            if (isJoined === false) {
               setShowJoinModal(true);
             }
             if (updatedUser?.lastInterstitialSessionId && !autoWatch) {

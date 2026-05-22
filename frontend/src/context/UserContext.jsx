@@ -116,15 +116,16 @@ export const UserProvider = ({ children }) => {
 
   const refreshUser = async () => {
     const tg = window.Telegram?.WebApp;
-    if (!tg || !user) return;
+    if (!user) return;
     
     try {
       const response = await axios.post(`${apiBase}/api/user/sync`, {
         telegramId: user.telegramId
       }, {
-        headers: { 'x-telegram-init-data': tg.initData }
+        headers: { 'x-telegram-init-data': tg?.initData || '' }
       });
       setUser(response.data);
+      return response.data;
     } catch (refreshError) {
        console.error('Refresh failed', refreshError);
     }
