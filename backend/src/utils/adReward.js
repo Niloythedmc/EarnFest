@@ -203,6 +203,8 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       });
     }
 
+    console.log(`[AD_REWARD] Credited Ad Reward to User: ${telegramIdRaw}, Amount: ${outcome.rewardAmount} FEST. New Balance: ${outcome.prevBalance + outcome.rewardAmount}`);
+
     return {
       ok: true,
       newBalance: outcome.prevBalance + outcome.rewardAmount,

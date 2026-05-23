@@ -173,6 +173,8 @@ router.post('/offchain/withdraw', validateINITData, async (req, res) => {
       type: 'offchain'
     });
 
+    console.log(`[WITHDRAWAL_REQUEST] User ${sessionUserId} requested withdrawal of ${parsedAmount} FEST. Status: PENDING, ReqId: ${withdrawRef.id}`);
+
     // Notify Admin group
     try {
       const displayName = userData.firstName || userData.username || 'User';

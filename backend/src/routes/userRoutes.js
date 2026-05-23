@@ -695,6 +695,8 @@ router.post('/spin', validateINITData, async (req, res) => {
     recordGameActiveUser('spin_wheel', actualId);
     adjustTotalBalance(result.selectedPrize.value - SPIN_PRICE);
 
+    console.log(`[GAMEPLAY] User ${actualId} played Spin Wheel. Price: ${SPIN_PRICE} FEST, Prize: ${result.selectedPrize.label} (${result.selectedPrize.value} FEST)`);
+
     // Check if user just became "Active" after this spin (maybe they just hit 1 task or something, though spin isn't a task)
     // Actually, spin is an activity that could trigger active status if we define it so.
     // But the user said "mandatory tasks" and "ad rewards".
@@ -890,6 +892,8 @@ router.post('/spin-game', validateINITData, async (req, res) => {
     recordGameActiveUser('spin_wheel', telegramId.toString());
     adjustTotalBalance(result.rewardAmount - SPIN_GAME_COST);
 
+    console.log(`[GAMEPLAY] User ${telegramId} played Solo Spin Game. Cost: ${SPIN_GAME_COST} FEST, Payout: ${result.rewardAmount} FEST, Net: ${result.rewardAmount - SPIN_GAME_COST}`);
+
     res.json({
       success: true,
       reward: result.rewardAmount,
@@ -1004,6 +1008,8 @@ router.post('/slot-game', validateINITData, async (req, res) => {
     incrementGamePlays('slots');
     recordGameActiveUser('slots', telegramId.toString());
     adjustTotalBalance(result.netGain);
+
+    console.log(`[GAMEPLAY] User ${telegramId} played Slot Game. Bet: ${bet} FEST, Payout: ${result.payout} FEST, Reels: [${result.reels.join(', ')}], Net: ${result.netGain}`);
 
     res.json({
       success: true,

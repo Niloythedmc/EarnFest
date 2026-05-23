@@ -139,6 +139,10 @@ const walletFatherDepositHandler = async (req, res) => {
       return { status: 'ok' };
     });
 
+    if (result.status === 'ok') {
+      console.log(`[DEPOSIT] Deposit succeeded for User: ${normalizedUserId}, Amount: ${parsedAmount} FEST, TxId: ${normalizedTxId}`);
+    }
+
     // [DEBUG] Update log with final result
     await db.collection('walletFatherLogs').add({
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -544,6 +548,8 @@ router.post('/webhook', async (req, res) => {
               });
               decrementPendingWithdrawals();
 
+              console.log(`[WITHDRAWAL_COMPLETED] Withdrawal request ${withdrawId} completed successfully. User: ${userId}, Amount: ${amount} FEST, Tx: ${wfData.hash || 'N/A'}`);
+
               try {
                 await axios.post(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
                   chat_id: message.chat.id,
@@ -573,11 +579,13 @@ router.post('/webhook', async (req, res) => {
                 ]
               }, true);
             } else {
+              const errMsg = wfData?.error || wfData?.message || 'WalletFather payout failed';
               await wRef.update({
                 status: 'FAILED',
-                error: wfData?.error || wfData?.message || 'WalletFather payout failed'
+                error: errMsg
               });
               decrementPendingWithdrawals();
+              console.error(`[WITHDRAWAL_FAILED] Withdrawal request ${withdrawId} failed. User: ${userId}, Amount: ${amount} FEST. Error: ${errMsg}`);
 
               // REFUND LOGIC
               const refundAmount = parseFloat(amount);

@@ -32,6 +32,8 @@ export async function processReferralCommission(friendId, amount, type, referrer
   const timestamp = new Date().toISOString();
   const referrerRef = db.collection('users').doc(String(referrerId));
 
+  console.log(`[REFERRAL_COMMISSION] Credited ${commission} FEST (20% of ${amount} for ${type}) to Referrer ${referrerId} from Friend ${friendId}`);
+
   const commissionEntry = {
     type: 'referral_commission',
     subType: type,

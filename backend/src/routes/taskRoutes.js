@@ -115,6 +115,8 @@ async function completeTask(telegramId, taskId) {
     await checkAndRewardActiveReferral(telegramId);
   }
 
+  console.log(`[ACTIVITY] User ${telegramId} completed task ${taskId}. Reward: ${finalReward} FEST`);
+
   return { ok: true, reward: finalReward };
 }
 
@@ -146,6 +148,8 @@ router.get('/callback/adsgram', async (req, res) => {
     if (!telegramId || !taskId) {
       return res.status(400).send('Missing userid or taskid');
     }
+
+    console.log(`[CALLBACK] Adsgram Callback received for User: ${telegramId}, Task: ${taskId}`);
 
     const result = await completeTask(telegramId, taskId);
     if (!result.ok) {
