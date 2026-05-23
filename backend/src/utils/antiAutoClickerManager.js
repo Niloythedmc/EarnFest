@@ -146,7 +146,7 @@ export async function isSuspectedAutoClicker(telegramId) {
     
     const recentAdViews = recentActivities.filter(activity => {
       const actTime = new Date(activity.timestamp).getTime();
-      return activity.type === 'ad_reward' && actTime > fiveMinutesAgo;
+      return (activity.type === 'ad' || activity.type === 'ad_reward') && actTime > fiveMinutesAgo;
     });
     
     if (recentAdViews.length >= 20) {

@@ -439,10 +439,13 @@ router.get('/leaderboard', validateINITData, async (req, res) => {
 router.get('/reward/adsgram', async (req, res) => {
   try {
     const expected = process.env.ADSGRAM_REWARD_SECRET;
-    const fallbackToken = 'aLIrUxfHy3O8ME7J8l0o8LQJBhwha9ENa3DSH';
+    if (!expected || expected.length < 8) {
+      console.error('ADSGRAM_REWARD_SECRET missing or too weak — refusing AdsGram callback');
+      return res.status(503).send('Not configured');
+    }
     
     const provided = req.query.token;
-    const isValid = (expected && expected.length >= 8 && provided === expected) || (provided === fallbackToken);
+    const isValid = (provided === expected);
     
     if (!isValid) {
       return res.status(403).send('Forbidden');
