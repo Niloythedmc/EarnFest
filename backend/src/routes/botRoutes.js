@@ -201,6 +201,29 @@ router.post('/webhook', async (req, res) => {
       console.log(`Bot Update Received: ${JSON.stringify(update)}`);
     }
 
+    // Handle bot block/unblock updates
+    if (update.my_chat_member) {
+      const { chat, new_chat_member } = update.my_chat_member;
+      if (chat && chat.type === 'private' && new_chat_member) {
+        const userId = chat.id.toString();
+        const isBlocked = !['creator', 'administrator', 'member', 'restricted'].includes(new_chat_member.status);
+        
+        try {
+          const userRef = db.collection('users').doc(userId);
+          const userDoc = await userRef.get();
+          if (userDoc.exists) {
+            await userRef.update({
+              blocked: isBlocked,
+              blockedUpdatedAt: new Date().toISOString()
+            });
+            console.log(`User ${userId} bot status updated: blocked = ${isBlocked}`);
+          }
+        } catch (dbErr) {
+          console.error(`Failed to update blocked status for user ${userId}:`, dbErr.message);
+        }
+      }
+    }
+
     if (update.message) {
       const { chat, text, from } = update.message;
       if (!from || !chat) return res.status(200).send('OK');
@@ -283,7 +306,14 @@ router.post('/webhook', async (req, res) => {
             totalAdEarnings: 0,
             spinHistory: [],
             joinedViaLink,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            blocked: false
+          });
+        } else {
+          // If the user already exists, update their blocked state to false
+          await userRef.update({
+            blocked: false,
+            blockedUpdatedAt: new Date().toISOString()
           });
         }
 

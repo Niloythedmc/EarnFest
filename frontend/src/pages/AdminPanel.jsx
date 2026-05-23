@@ -44,6 +44,7 @@ const AdminPanel = () => {
   const [daysFilter, setDaysFilter] = useState('');
   const [planFilter, setPlanFilter] = useState('');
   const [sending, setSending] = useState(false);
+  const [forceSend, setForceSend] = useState(false);
   const [forwardedMessage, setForwardedMessage] = useState(null);
   const [sendSummary, setSendSummary] = useState(null);
   const [currentBroadcastId, setCurrentBroadcastId] = useState(null);
@@ -539,6 +540,7 @@ const AdminPanel = () => {
       // Common fields
       formData.append('filterType', filterType);
       formData.append('buttons', JSON.stringify(buttons));
+      formData.append('force', forceSend ? 'true' : 'false');
 
       // Filter-specific fields
       if (filterType === 'balance') formData.append('balanceAmount', balanceFilter);
@@ -1750,6 +1752,19 @@ const AdminPanel = () => {
             }}
           />
         )}
+
+        <div className="flex-row" style={{ marginTop: '16px', gap: '8px', alignItems: 'center' }}>
+          <input
+            id="forceSendCheckbox"
+            type="checkbox"
+            checked={forceSend}
+            onChange={(e) => setForceSend(e.target.checked)}
+            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+          />
+          <label htmlFor="forceSendCheckbox" style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary-gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Zap size={14} className={forceSend ? "spin" : ""} /> Force Broadcast (Ignore Blocklist / Retry all users)
+          </label>
+        </div>
       </Card>
 
       {/* Preview & Send */}

@@ -1,4 +1,39 @@
 import axios from 'axios';
+import { db } from '../config/firebase.js';
+
+const handleBotBlock = async (chatId, error) => {
+  if (!chatId) return;
+  const chatIdStr = chatId.toString();
+  if (chatIdStr.startsWith('@') || chatIdStr.startsWith('-')) {
+    return;
+  }
+
+  const errData = error.response?.data || { message: error.message };
+  const errDesc = errData.description || '';
+  
+  if (
+    errDesc.includes("bot can't initiate conversation") ||
+    errDesc.includes("chat not found") ||
+    errDesc.includes("Forbidden") ||
+    errDesc.includes("blocked by the user")
+  ) {
+    if (db) {
+      try {
+        const userRef = db.collection('users').doc(chatIdStr);
+        const doc = await userRef.get();
+        if (doc.exists) {
+          await userRef.update({
+            blocked: true,
+            blockedUpdatedAt: new Date().toISOString()
+          });
+          console.log(`Auto-blocked user ${chatIdStr} in Firestore due to Telegram API error`);
+        }
+      } catch (dbErr) {
+        console.error(`Failed to mark user ${chatIdStr} as blocked in Firestore:`, dbErr.message);
+      }
+    }
+  }
+};
 
 export const sendTelegramMessage = async (chatId, text, replyMarkup = null, disablePreview = false) => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -17,6 +52,7 @@ export const sendTelegramMessage = async (chatId, text, replyMarkup = null, disa
     });
   } catch (error) {
     console.error('Failed to send Telegram message:', error.response?.data || error.message);
+    await handleBotBlock(chatId, error).catch(() => {});
     throw error; // Throw so that callers can catch it and know it failed
   }
 };
@@ -38,6 +74,7 @@ export const sendTelegramPhoto = async (chatId, photoUrl, caption, replyMarkup =
     });
   } catch (error) {
     console.error('Failed to send Telegram photo:', error.response?.data || error.message);
+    await handleBotBlock(chatId, error).catch(() => {});
     throw error; // Throw so the caller can trigger a fallback
   }
 };

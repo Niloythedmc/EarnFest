@@ -639,10 +639,13 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
       daysAgo,
       planType,
       targetIds,
+      force,
       entities: entityPayload,
       captionEntities: captionEntityPayload,
       replyMarkup: replyMarkupPayload
     } = req.body;
+
+    const isForce = force === 'true' || force === true;
 
     const image = req.file;
     const parsePayload = (data) => {
@@ -721,7 +724,7 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
             } else {
                 // Broad filters - Using Paginated Query to handle large volumes (no limit)
                 let query = db.collection('users');
-                const fields = ['telegramId'];
+                const fields = ['telegramId', 'blocked'];
                 if (filterType === 'balance') fields.push('balance');
                 if (filterType === 'inactive') fields.push('lastAdDate', 'createdAt');
                 if (filterType === 'plan') {
@@ -753,6 +756,8 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
 
                   snap.forEach(doc => {
                       const u = { id: doc.id, ...doc.data() };
+                      if (!isForce && u.blocked === true) return; // Skip blocked users!
+
                       if (filterType === 'balance') {
                          if ((u.balance || 0) < parseFloat(balanceAmount)) targetUsers.push(u);
                       } else if (filterType === 'inactive') {
@@ -810,6 +815,11 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
                     try {
                         const chatId = user.telegramId || user.id;
                         
+                        if (!isForce && user.blocked === true) {
+                            failedIds.push(chatId);
+                            return;
+                        }
+
                         if (imageUrl) {
                             // Use the reliable sendTelegramPhoto utility
                             await sendTelegramPhoto(chatId, imageUrl, message || '', finalMarkup);
