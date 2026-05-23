@@ -439,7 +439,7 @@ router.get('/leaderboard', validateINITData, async (req, res) => {
 router.get('/reward/adsgram', async (req, res) => {
   try {
     const expected = process.env.ADSGRAM_REWARD_SECRET;
-    const fallbackToken = 'aLIrUxf/Hy3O8ME7J8l0o8LQPzM1JBhwha9ENa3DSHE=';
+    const fallbackToken = 'aLIrUxfHy3O8ME7J8l0o8LQJBhwha9ENa3DSH';
     
     const provided = req.query.token;
     const isValid = (expected && expected.length >= 8 && provided === expected) || (provided === fallbackToken);
