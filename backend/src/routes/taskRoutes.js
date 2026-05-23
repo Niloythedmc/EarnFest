@@ -128,6 +128,12 @@ router.get('/callback/adsgram', async (req, res) => {
       return res.status(503).send('Not configured');
     }
 
+    // Block direct browser-based calls
+    if (req.headers.origin || req.headers.referer) {
+      console.warn(`Blocked Adsgram S2S task callback attempt from browser/client with Origin: ${req.headers.origin}`);
+      return res.status(403).send('Forbidden: Direct browser callbacks not allowed');
+    }
+
     const provided = req.query.token || req.query.secret || req.query.key;
     if (provided !== expected) {
       console.warn(`Invalid token provided in Adsgram task callback: ${provided}`);

@@ -444,6 +444,12 @@ router.get('/reward/adsgram', async (req, res) => {
       return res.status(503).send('Not configured');
     }
     
+    // Block direct browser-based calls
+    if (req.headers.origin || req.headers.referer) {
+      console.warn(`Blocked S2S callback attempt from browser/client with Origin: ${req.headers.origin}`);
+      return res.status(403).send('Forbidden: Direct browser callbacks not allowed');
+    }
+
     const provided = req.query.token;
     const isValid = (provided === expected);
     
@@ -481,6 +487,12 @@ router.get('/reward/monetag', async (req, res) => {
     if (!expected) {
       console.error('MONETAG_REWARD_SECRET missing — refusing Monetag callback');
       return res.status(503).send('Not configured');
+    }
+
+    // Block direct browser-based calls
+    if (req.headers.origin || req.headers.referer) {
+      console.warn(`Blocked Monetag S2S callback attempt from browser/client with Origin: ${req.headers.origin}`);
+      return res.status(403).send('Forbidden: Direct browser callbacks not allowed');
     }
 
     const provided = req.query.token || req.query.secret || req.query.key;

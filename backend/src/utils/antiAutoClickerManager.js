@@ -140,7 +140,7 @@ export async function isSuspectedAutoClicker(telegramId) {
     const data = doc.data();
     
     // Check for rapid ad viewing (more than 20 ads in last 5 minutes)
-    const recentActivities = (data.activities || []).slice(0, 20);
+    const recentActivities = data.activities || [];
     const now = Date.now();
     const fiveMinutesAgo = now - (5 * 60 * 1000);
     
@@ -149,7 +149,7 @@ export async function isSuspectedAutoClicker(telegramId) {
       return (activity.type === 'ad' || activity.type === 'ad_reward') && actTime > fiveMinutesAgo;
     });
     
-    if (recentAdViews.length >= 20) {
+    if (recentAdViews.length >= 10) {
       console.warn(`[AutoClickerCheck] User ${telegramId} has ${recentAdViews.length} ad views in 5 mins`);
       return true;
     }
