@@ -58,16 +58,38 @@ async function completeTask(telegramId, taskId) {
   const isAlreadyDone = (userData.taskHistory || []).some((t) => t.taskId === taskId);
   if (isAlreadyDone) return { ok: false, error: 'Task already completed', status: 400 };
 
-  const taskDoc = await db.collection('tasks').doc(taskId).get();
-  if (!taskDoc.exists) return { ok: false, error: 'Task not found', status: 404 };
-  const taskData = taskDoc.data();
-
-  if (taskData.status === 'paused') {
-    return { ok: false, error: 'Task is paused', status: 403 };
-  }
-
-  const finalReward = taskData.reward !== undefined ? parseFloat(taskData.reward) : 0.1;
+  let finalReward = 0;
   const timestamp = new Date().toISOString();
+
+  if (taskId === 'task-31743') {
+    finalReward = 0;
+    try {
+      const taskDoc = await db.collection('tasks').doc(taskId).get();
+      if (taskDoc.exists) {
+        await db.collection('tasks').doc(taskId).update({
+          completionCount: admin.firestore.FieldValue.increment(1),
+          lastCompletedAt: timestamp,
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to update task doc completions counter for task-31743:', e);
+    }
+  } else {
+    const taskDoc = await db.collection('tasks').doc(taskId).get();
+    if (!taskDoc.exists) return { ok: false, error: 'Task not found', status: 404 };
+    const taskData = taskDoc.data();
+
+    if (taskData.status === 'paused') {
+      return { ok: false, error: 'Task is paused', status: 403 };
+    }
+
+    finalReward = taskData.reward !== undefined ? parseFloat(taskData.reward) : 0.1;
+
+    await db.collection('tasks').doc(taskId).update({
+      completionCount: admin.firestore.FieldValue.increment(1),
+      lastCompletedAt: timestamp,
+    });
+  }
 
   await userRef.update({
     balance: admin.firestore.FieldValue.increment(finalReward),
@@ -83,11 +105,6 @@ async function completeTask(telegramId, taskId) {
       amount: finalReward,
       timestamp,
     }),
-  });
-
-  await db.collection('tasks').doc(taskId).update({
-    completionCount: admin.firestore.FieldValue.increment(1),
-    lastCompletedAt: timestamp,
   });
 
   incrementTaskCompletions();

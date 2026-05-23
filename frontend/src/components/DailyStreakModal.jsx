@@ -61,7 +61,7 @@ const DailyStreakModal = ({ onClose }) => {
     // Step 2: Adsgram interstitial
     try {
       if (window.Adsgram) {
-        const blockIds = ['int-26606', 'int-27024', 'int-27026', 'int-27027'];
+        const blockIds = ['int-31734', 'int-31735', 'int-31736', 'int-31737'];
         const randomId = blockIds[Math.floor(Math.random() * blockIds.length)];
         const AdController = window.Adsgram.init({ blockId: randomId });
         await AdController.show();
