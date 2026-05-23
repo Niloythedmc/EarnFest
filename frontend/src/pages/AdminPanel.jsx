@@ -763,7 +763,7 @@ const AdminPanel = () => {
           </>
         )}
         
-        {searchQuery && filteredUsers.length === 0 && users.length === 0 && !loading && (
+        {searchQuery && users.length === 0 && !loading && (
           <div style={{ textAlign: 'center', padding: '40px 0', opacity: 0.5 }}>
             <Search size={40} style={{ marginBottom: '10px' }} />
             <p>No users found matching "{searchQuery}"</p>
