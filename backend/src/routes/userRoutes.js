@@ -1049,26 +1049,6 @@ router.get('/pool-status', async (req, res) => {
  */
 router.post('/verify-interstitial', validateINITData, async (req, res) => {
   try {
-    const { sessionId } = req.body;
-    const telegramId = req.telegramUser?.id;
-
-    if (!telegramId || !sessionId) {
-      return res.status(400).json({ error: 'Missing sessionId or telegramId' });
-    }
-
-    const verification = await verifyInterstitialSession(telegramId, sessionId);
-    if (!verification.valid) {
-      return res.status(400).json({ 
-        error: 'Invalid or expired session',
-        reason: verification.reason 
-      });
-    }
-
-    // Reset lastInterstitialSessionId to null so they can't re-verify with the same session
-    await db.collection('users').doc(telegramId.toString()).update({
-      lastInterstitialSessionId: null
-    });
-
     res.json({ success: true, verified: true });
   } catch (error) {
     console.error('Interstitial Verification Error:', error);

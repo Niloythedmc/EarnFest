@@ -633,10 +633,6 @@ const TasksPage = () => {
             if (isJoined === false) {
               setShowJoinModal(true);
             }
-            if (updatedUser?.lastInterstitialSessionId && !autoWatch) {
-              setInterstitialSessionId(updatedUser.lastInterstitialSessionId);
-              setShowInterstitial(true);
-            }
           }, 1500);
         });
       } catch (err) {

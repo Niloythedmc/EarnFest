@@ -53,7 +53,8 @@ async function scanTransactions() {
             try {
                 const client = await getTonClient();
                 const masterInfo = await client.getMasterchainInfo();
-                console.log(`[Scanner] Syncing with node (Seqno: ${masterInfo.seqno})...`);
+                const currentSeqno = masterInfo.latestSeqno || masterInfo.last?.seqno;
+                console.log(`[Scanner] Syncing with node (Seqno: ${currentSeqno})...`);
                 transactions = await client.getTransactions(address, { limit: 20 });
                 break; // Exit loop on success
             } catch (error) {

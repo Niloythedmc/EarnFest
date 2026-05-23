@@ -8,44 +8,19 @@ import admin from 'firebase-admin';
  * - Prevents predictable automation
  */
 
-export const INTERSTITIAL_PROBABILITY = 0.35; // 35% chance of interstitial after ad
+export const INTERSTITIAL_PROBABILITY = 0; // Disabled
 export function shouldShowInterstitial(telegramId) {
-  if (telegramId && String(telegramId) === '7716785914') {
-    return {
-      shouldShowInterstitial: false,
-      sessionId: null,
-    };
-  }
-  // Random 35% chance
-  const shouldShow = Math.random() < INTERSTITIAL_PROBABILITY;
-  const sessionId = generateSessionId();
-  
-  console.log(`[Interstitial] User ${telegramId}: Show=${shouldShow}`);
-  
   return {
-    shouldShowInterstitial: shouldShow,
-    sessionId: shouldShow ? sessionId : null,
+    shouldShowInterstitial: false,
+    sessionId: null,
   };
 }
 
 /**
- * Record interstitial ad view in user's document
+ * Record interstitial ad view in user's document (No-op)
  */
 export async function recordInterstitialView(telegramId, sessionId) {
-  try {
-    const userRef = db.collection('users').doc(telegramId.toString());
-    
-    await userRef.update({
-      lastInterstitialAt: new Date().toISOString(),
-      interstitialViewCount: admin.firestore.FieldValue.increment(1),
-      lastInterstitialSessionId: sessionId,
-    });
-    
-    return { success: true };
-  } catch (error) {
-    console.error('[InterstitialRecord] Error recording interstitial:', error);
-    return { success: false, error };
-  }
+  return { success: true };
 }
 
 /**

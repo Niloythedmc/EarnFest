@@ -291,36 +291,38 @@ export async function verifyTonTransactionByHash(txHash, expectedRecipient, expe
 export async function getTonClient() {
     let endpoint = 'https://toncenter.com/api/v2/jsonRPC';
     const apiKey = process.env.TONCENTER_API_KEY || 'AEMUNTFHYNZAC4YAAAAG6LBFXLHUILRGT26BNP4TT5TLWMLAVBU6APZ4AGIZPH6UIQTLKFQ';
+    const isCustomKey = apiKey && !apiKey.startsWith('AEM');
 
-    try {
-        const { getHttpEndpoint } = await import('@orbs-network/ton-access');
-        endpoint = await getHttpEndpoint({ network: 'mainnet' });
-        
-        // Final guard: prevent any testnet URL from leaking in
-        if (endpoint.toLowerCase().includes('testnet')) {
-            throw new Error('Discovery service returned a Testnet endpoint while Mainnet was requested');
+    if (!isCustomKey) {
+        try {
+            const { getHttpEndpoint } = await import('@orbs-network/ton-access');
+            endpoint = await getHttpEndpoint({ network: 'mainnet' });
+            
+            // Final guard: prevent any testnet URL from leaking in
+            if (endpoint.toLowerCase().includes('testnet')) {
+                throw new Error('Discovery service returned a Testnet endpoint while Mainnet was requested');
+            }
+        } catch (e) {
+            console.warn('TON: getHttpEndpoint failed or returned testnet, falling back to toncenter mainnet.');
+            endpoint = 'https://toncenter.com/api/v2/jsonRPC';
         }
-    } catch (e) {
-        console.warn('TON: getHttpEndpoint failed or returned testnet, falling back to toncenter mainnet.');
+    } else {
         endpoint = 'https://toncenter.com/api/v2/jsonRPC';
     }
 
     const client = new TonClient({ 
         endpoint, 
-        ...(apiKey && !apiKey.startsWith('AEM') && { apiKey }) 
+        ...(isCustomKey && { apiKey }) 
     });
 
     // Verify we are actually on Mainnet by checking the masterchain and global network ID
     try {
         const masterchainInfo = await client.getMasterchainInfo();
+        const currentSeqno = masterchainInfo.latestSeqno || masterchainInfo.last?.seqno;
         
-        // Double-check the network via a custom method call if possible, 
-        // or use the seqno/workchain as a heuristic.
-        // For absolute certainty, we can query a known mainnet-only contract or config.
+        console.log(`[TON] Network Check: Endpoint=${endpoint} (Seqno: ${currentSeqno})`);
         
-        console.log(`[TON] Network Check: Endpoint=${endpoint} (Seqno: ${masterchainInfo.seqno})`);
-        
-        if (masterchainInfo.seqno < 1000000) {
+        if (currentSeqno && currentSeqno < 1000000) {
             console.warn('[SECURITY] Seqno suspiciously low. This node might be on Testnet.');
         }
 
