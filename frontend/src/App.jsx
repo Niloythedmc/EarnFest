@@ -62,7 +62,7 @@ function AppShell() {
   }, []);
 
   const isAdmin = user && adminIds.includes(user.telegramId.toString());
-  const isMaintenance = maintenanceMode && !isAdmin;
+  const isMaintenance = maintenanceMode && !isAdmin && location.pathname !== '/admin';
 
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
