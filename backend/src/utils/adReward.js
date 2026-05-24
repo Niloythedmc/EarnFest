@@ -73,7 +73,7 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       
       // 1. Basic Cooldown (30s)
       const last = userData.lastAdRewardAt;
-      if (last != null && String(telegramIdRaw) !== '7716785914') {
+      if (last != null) {
         const lastMs =
           typeof last === 'number'
             ? last
@@ -93,7 +93,7 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       let cycleCount = userData.adCycleCount || 0;
       let cycleResetAt = userData.lastAdCycleResetAt || 0;
 
-      if (cycleCount >= AD_CYCLE_LIMIT && String(telegramIdRaw) !== '7716785914') {
+      if (cycleCount >= AD_CYCLE_LIMIT) {
         const timeSinceReset = now - cycleResetAt;
         if (timeSinceReset < AD_CYCLE_COOLDOWN_MS) {
           return {
