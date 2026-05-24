@@ -25,6 +25,7 @@ const PORT = process.env.PORT || 5000;
 // Dynamic CORS configuration
 const allowedOrigins = [
   'https://earn-fest.web.app',
+  'https://earn-fest.firebaseapp.com',
   'https://eidfest.web.app',
   'https://earnfest.pages.dev',
   'http://localhost:5173',
