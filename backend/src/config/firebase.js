@@ -1,83 +1,310 @@
-import admin from 'firebase-admin';
+import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) {
+  console.error("Error: MONGODB_URI is not set in environment variables");
+  process.exit(1);
+}
 
-let db = null;
-let auth = null;
+console.log("Connecting to MongoDB via compatibility layer...");
+const client = new MongoClient(mongoUri);
+await client.connect();
+console.log("MongoDB compatibility layer connected successfully!");
+const mongoDb = client.db();
 
-if (!admin.apps.length) {
-  try {
-    const serviceAccountPath = join(__dirname, '../../serviceAccountKey.json');
-    const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+const transactionStorage = new AsyncLocalStorage();
 
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log('Firebase initialized successfully from serviceAccountKey.json');
-  } catch (error) {
-    console.error('Firebase initialization error from file, falling back to env vars:', error.message);
-
-    try {
-      const projectId = process.env.FIREBASE_PROJECT_ID;
-      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-      let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-      if (!projectId || !clientEmail || !privateKey) {
-        throw new Error('Missing core Firebase environment variables');
-      }
-
-      // Check if the user accidentally pasted the whole JSON
-      if (privateKey.trim().startsWith('{')) {
-        try {
-          const parsed = JSON.parse(privateKey);
-          if (parsed.private_key) {
-            privateKey = parsed.private_key;
-            console.log('Detected full JSON in FIREBASE_PRIVATE_KEY, extracted private_key');
-          }
-        } catch (e) {
-          console.warn('Attempted to parse privateKey as JSON but failed');
-        }
-      }
-
-      console.log('Processing Private Key...');
-
-      privateKey = privateKey.trim().replace(/^['"]|['"]$/g, '');
-      privateKey = privateKey.replace(/\\n/g, '\n');
-
-      if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
-        privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}`;
-      }
-      if (!privateKey.includes('-----END PRIVATE KEY-----')) {
-        privateKey = `${privateKey}\n-----END PRIVATE KEY-----`;
-      }
-
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          privateKeyId: process.env.FIREBASE_PRIVATE_KEY_ID || 'manual-id',
-          privateKey: privateKey.trim(),
-          clientEmail,
-        }),
-      });
-      console.log('Firebase initialized from environment variables');
-    } catch (envError) {
-      console.error('Firebase final initialization failure:', envError.message);
-      console.warn('Continuing without Firebase - some features may not work');
-    }
+// Firestore FieldValue mock classes
+class IncrementFieldValue {
+  constructor(val) {
+    this.val = val;
   }
 }
 
-if (admin.apps.length > 0) {
-  db = admin.firestore();
-  auth = admin.auth();
+class ArrayUnionFieldValue {
+  constructor(vals) {
+    this.vals = vals;
+  }
 }
+
+class ArrayRemoveFieldValue {
+  constructor(vals) {
+    this.vals = vals;
+  }
+}
+
+class DeleteFieldValue {}
+
+class ServerTimestampFieldValue {}
+
+const FieldValue = {
+  increment: (val) => new IncrementFieldValue(val),
+  arrayUnion: (...vals) => new ArrayUnionFieldValue(vals),
+  arrayRemove: (...vals) => new ArrayRemoveFieldValue(vals),
+  delete: () => new DeleteFieldValue(),
+  serverTimestamp: () => new ServerTimestampFieldValue(),
+};
+
+const admin = {
+  apps: [{ name: '[DEFAULT]' }],
+  firestore: {
+    FieldValue
+  }
+};
+
+// Translates Firestore-style update data to MongoDB update operators
+function translateUpdateData(data) {
+  const setObj = {};
+  const incObj = {};
+  const addToSetObj = {};
+  const pullObj = {};
+  const unsetObj = {};
+
+  for (const [key, val] of Object.entries(data)) {
+    if (val instanceof IncrementFieldValue) {
+      incObj[key] = val.val;
+    } else if (val instanceof ArrayUnionFieldValue) {
+      addToSetObj[key] = { $each: val.vals };
+    } else if (val instanceof ArrayRemoveFieldValue) {
+      pullObj[key] = { $in: val.vals };
+    } else if (val instanceof DeleteFieldValue) {
+      unsetObj[key] = "";
+    } else if (val instanceof ServerTimestampFieldValue) {
+      setObj[key] = new Date();
+    } else {
+      setObj[key] = val;
+    }
+  }
+
+  const update = {};
+  if (Object.keys(setObj).length > 0) update.$set = setObj;
+  if (Object.keys(incObj).length > 0) update.$inc = incObj;
+  if (Object.keys(addToSetObj).length > 0) update.$addToSet = addToSetObj;
+  if (Object.keys(pullObj).length > 0) update.$pull = pullObj;
+  if (Object.keys(unsetObj).length > 0) update.$unset = unsetObj;
+
+  return update;
+}
+
+// Mimics a Firestore DocumentReference
+class DocumentReference {
+  constructor(collectionName, docId) {
+    this.collectionName = collectionName;
+    this.id = docId;
+  }
+
+  async get() {
+    const session = transactionStorage.getStore();
+    const doc = await mongoDb.collection(this.collectionName).findOne({ _id: this.id }, { session });
+    return new DocumentSnapshot(this.id, doc);
+  }
+
+  async update(data) {
+    const session = transactionStorage.getStore();
+    const update = translateUpdateData(data);
+    await mongoDb.collection(this.collectionName).updateOne({ _id: this.id }, update, { upsert: false, session });
+  }
+
+  async set(data, options = {}) {
+    const session = transactionStorage.getStore();
+    if (options.merge) {
+      const update = translateUpdateData(data);
+      await mongoDb.collection(this.collectionName).updateOne({ _id: this.id }, update, { upsert: true, session });
+    } else {
+      const doc = { _id: this.id, ...data };
+      await mongoDb.collection(this.collectionName).replaceOne({ _id: this.id }, doc, { upsert: true, session });
+    }
+  }
+
+  async delete() {
+    const session = transactionStorage.getStore();
+    await mongoDb.collection(this.collectionName).deleteOne({ _id: this.id }, { session });
+  }
+}
+
+// Mimics a Firestore DocumentSnapshot
+class DocumentSnapshot {
+  constructor(id, doc) {
+    this.id = id;
+    this._doc = doc;
+    this.exists = doc !== null && doc !== undefined;
+  }
+
+  data() {
+    if (!this._doc) return undefined;
+    const { _id, ...rest } = this._doc;
+    return rest;
+  }
+
+  get(field) {
+    if (!this._doc) return undefined;
+    return this._doc[field];
+  }
+}
+
+// Mimics a Firestore QuerySnapshot
+class QuerySnapshot {
+  constructor(docs) {
+    this.docs = docs;
+    this.size = docs.length;
+    this.empty = docs.length === 0;
+  }
+
+  forEach(callback) {
+    this.docs.forEach(callback);
+  }
+}
+
+// Mimics a Firestore CollectionReference / Query
+class CollectionReference {
+  constructor(collectionName, queryObj = {}) {
+    this.collectionName = collectionName;
+    this.queryObj = {
+      filter: queryObj.filter || {},
+      sort: queryObj.sort || null,
+      limit: queryObj.limit || null,
+      offset: queryObj.offset || null
+    };
+  }
+
+  doc(id) {
+    const docId = id !== undefined ? id.toString() : Math.random().toString(36).substring(2, 15);
+    return new DocumentReference(this.collectionName, docId);
+  }
+
+  where(field, op, value) {
+    const newFilter = { ...this.queryObj.filter };
+
+    if (op === '==') {
+      newFilter[field] = value;
+    } else if (op === '>') {
+      newFilter[field] = { ...newFilter[field], $gt: value };
+    } else if (op === '<') {
+      newFilter[field] = { ...newFilter[field], $lt: value };
+    } else if (op === '>=') {
+      newFilter[field] = { ...newFilter[field], $gte: value };
+    } else if (op === '<=') {
+      newFilter[field] = { ...newFilter[field], $lte: value };
+    } else if (op === 'in') {
+      newFilter[field] = { ...newFilter[field], $in: value };
+    } else if (op === 'array-contains') {
+      newFilter[field] = value;
+    }
+
+    return new CollectionReference(this.collectionName, {
+      ...this.queryObj,
+      filter: newFilter
+    });
+  }
+
+  orderBy(field, dir = 'asc') {
+    const sortObj = this.queryObj.sort || {};
+    sortObj[field] = dir === 'desc' ? -1 : 1;
+    return new CollectionReference(this.collectionName, {
+      ...this.queryObj,
+      sort: sortObj
+    });
+  }
+
+  limit(num) {
+    return new CollectionReference(this.collectionName, {
+      ...this.queryObj,
+      limit: num
+    });
+  }
+
+  async add(data) {
+    const session = transactionStorage.getStore();
+    const id = Math.random().toString(36).substring(2, 15);
+    const doc = { _id: id, ...data };
+    await mongoDb.collection(this.collectionName).insertOne(doc, { session });
+    return { id };
+  }
+
+  async get() {
+    const session = transactionStorage.getStore();
+    let cursor = mongoDb.collection(this.collectionName).find(this.queryObj.filter, { session });
+    if (this.queryObj.sort) {
+      cursor = cursor.sort(this.queryObj.sort);
+    }
+    if (this.queryObj.limit) {
+      cursor = cursor.limit(this.queryObj.limit);
+    }
+    const docs = await cursor.toArray();
+    const snapshots = docs.map(d => new DocumentSnapshot(d._id, d));
+    return new QuerySnapshot(snapshots);
+  }
+
+  count() {
+    return {
+      get: async () => {
+        const session = transactionStorage.getStore();
+        const count = await mongoDb.collection(this.collectionName).countDocuments(this.queryObj.filter, { session });
+        return {
+          data: () => ({ count }),
+          count
+        };
+      }
+    };
+  }
+}
+
+// Mimics a Firestore Transaction
+class Transaction {
+  async get(docRef) {
+    return docRef.get();
+  }
+
+  update(docRef, data) {
+    return docRef.update(data);
+  }
+
+  set(docRef, data, options) {
+    return docRef.set(data, options);
+  }
+
+  delete(docRef) {
+    return docRef.delete();
+  }
+}
+
+const db = {
+  collection: (name) => new CollectionReference(name),
+  runTransaction: async (updateFunction) => {
+    try {
+      const session = client.startSession();
+      try {
+        let result;
+        await session.withTransaction(async () => {
+          result = await transactionStorage.run(session, async () => {
+            const transaction = new Transaction();
+            return updateFunction(transaction);
+          });
+        });
+        return result;
+      } catch (err) {
+        if (err.message && (err.message.includes('replica set') || err.message.includes('transaction') || err.message.includes('standalone'))) {
+          // Fallback to sessionless in standalone
+          const transaction = new Transaction();
+          return updateFunction(transaction);
+        }
+        throw err;
+      } finally {
+        await session.endSession();
+      }
+    } catch (sessionErr) {
+      // Graceful fallback to sessionless if startSession fails
+      const transaction = new Transaction();
+      return updateFunction(transaction);
+    }
+  }
+};
+
+const auth = null;
 
 export { db, auth };
 export default admin;

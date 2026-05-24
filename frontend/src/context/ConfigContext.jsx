@@ -7,7 +7,7 @@ export const ConfigProvider = ({ children }) => {
   const [config] = useState({
     apiBase: 'https://eidfest.up.railway.app', // Update for production
     adsgramBlockId: '25093', 
-    maintenanceMode: true,
+    maintenanceMode: false,
     adminIds: ['5968063026', '6686954447', '1678112785', '123456789'],
     festMaster: 'EQA5tc67TExHH3doV0lMAzWNVgbFEl5bBrl5obz68l6jDfUF',
     walletFather: {

@@ -25,6 +25,7 @@
     "firebase-admin": "^13.7.0",
     "firestore-export-import": "^1.6.0",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.5.0",
     "multer": "^1.4.5-lts.1",
     "telegraf": "^4.16.3",
     "validator": "^13.11.0"
