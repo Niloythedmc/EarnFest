@@ -38,7 +38,11 @@ const Home = () => {
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [promoMeta, setPromoMeta] = useState(null);
   const [activeOffer, setActiveOffer] = useState(null);
+  const [activeContest, setActiveContest] = useState(null);
+  const [countdown, setCountdown] = useState('');
+  const countdownRef = useRef(null);
   const promoBoxRef = useRef(null);
+
 
   const { apiBase, adminIds } = useConfig();
 
@@ -100,6 +104,21 @@ const Home = () => {
     };
     fetchOffer();
 
+    const fetchActiveContest = async () => {
+      try {
+        const tg = window.Telegram?.WebApp;
+        const headers = { 'x-telegram-init-data': tg?.initData };
+        const res = await axios.get(`${apiBase}/api/contests/active`, { headers });
+        const { contest } = res.data;
+        if (contest) {
+          setActiveContest(contest);
+        }
+      } catch (err) {
+        console.error('Active contest fetch failed', err);
+      }
+    };
+    fetchActiveContest();
+
     const firstTimer = setTimeout(() => {
       setShowPromo(true);
     }, 1500);
@@ -113,6 +132,59 @@ const Home = () => {
       clearInterval(interval);
     };
   }, [apiBase]);
+
+  // Countdown timer for active contest
+  useEffect(() => {
+    if (!activeContest) {
+      setCountdown('');
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+      return;
+    }
+
+    const updateCountdown = () => {
+      const now = Date.now();
+      const end = activeContest.endTime;
+      const diff = end - now;
+
+      if (diff <= 0) {
+        setCountdown('Ended');
+        if (countdownRef.current) {
+          clearInterval(countdownRef.current);
+          countdownRef.current = null;
+        }
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      if (days > 0) {
+        setCountdown(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+      } else if (hours > 0) {
+        setCountdown(`${hours}h ${minutes}m ${seconds}s`);
+      } else if (minutes > 0) {
+        setCountdown(`${minutes}m ${seconds}s`);
+      } else {
+        setCountdown(`${seconds}s`);
+      }
+    };
+
+    updateCountdown();
+    countdownRef.current = setInterval(updateCountdown, 1000);
+
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+    };
+  }, [activeContest]);
+
 
   // Close promo box when clicking outside
   useEffect(() => {
@@ -295,92 +367,148 @@ const Home = () => {
         </div>
       </header>
 
-      {/* Banner Carousel */}
-      <BannerCarousel />
+      <div className="home-desktop-grid">
+        <div className="home-main-col">
+          {/* Banner Carousel */}
+          <BannerCarousel />
 
-      {/* Daily Streak Milestone */}
-      <div style={{
-        background: 'var(--secondary-bg)',
-        borderRadius: '14px',
-        border: '1px solid var(--glass-border)',
-        overflow: 'hidden'
-      }}>
-        <StreakMilestone compact />
-      </div>
-
-      {/* Mini Game Banner - under promo section */}
-      <div style={{ cursor: 'pointer', lineHeight: 0, borderRadius: '12px', overflow: 'hidden' }} onClick={() => navigate('/games')}>
-        <img
-          src="/minigameBanner.png"
-          alt="Mini Games"
-          style={{
-            width: '100%',
-            height: 'auto',
-            display: 'block',
-            borderRadius: '12px',
-            transform: 'scale(1.06)'
-          }}
-        />
-      </div>
-
-
-      {/* Recent Activities */}
-      {user.activities && user.activities.length > 0 && (
-        <div className="stack-vertical" style={{ gap: '10px' }}>
-          <h3 className="game-title" style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', textAlign: 'left', opacity: 0.8 }}>
-            <Activity size={16} className="gold-text" /> Recent Activities
-          </h3>
-          <div className="stack-vertical" style={{ gap: '6px' }}>
-            {[...user.activities]
-              .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-              .slice(0, 10)
-              .map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 14px',
-                    background: 'rgba(255,255,255,0.02)',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(255,255,255,0.04)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{
-                      width: '32px', height: '32px', borderRadius: '8px',
-                      background: 'rgba(255,255,255,0.04)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '0.8rem'
-                    }}>
-                      {item.type === 'task_completion' ? '📋' :
-                       item.type === 'promocode_reward' ? '🎁' :
-                       item.type === 'referral_commission' ? '👥' :
-                       item.type === 'spin_ad_view' ? '📺' :
-                       item.type === 'spin' || item.type === 'spin_game' ? '🎡' :
-                       item.type === 'slot_game' ? '🎰' : '📌'}
-                    </div>
-                    <div>
-                      <div className="font-gaming" style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'capitalize' }}>
-                        {item.type.replace(/_/g, ' ')}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.6rem', opacity: 0.4 }}>
-                        <Clock size={10} />
-                        {item.timestamp ? new Date(item.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
-                      </div>
-                    </div>
-                  </div>
-                  {item.amount != null && (
-                    <span className="game-title" style={{ fontSize: '0.85rem', color: item.amount > 0 ? '#00c896' : '#ff4d4d' }}>
-                      {item.amount > 0 ? '+' : ''}{item.amount}
-                    </span>
-                  )}
+          {/* Active Contest Dashboard Widget */}
+          {activeContest && (
+            <Card
+              className="glitter-base"
+              style={{
+                padding: '20px',
+                background: 'linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(0,0,0,0.4) 100%)',
+                border: '1px solid rgba(255,215,0,0.3)',
+                borderRadius: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}
+            >
+              <div className="flex-row-between">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Trophy size={20} className="gold-text" />
+                  <span className="font-gaming" style={{ fontSize: '0.9rem', fontWeight: '800', color: '#FFD700', letterSpacing: '0.5px' }}>
+                    LIVE CONTEST
+                  </span>
                 </div>
-              ))}
+                <Badge variant="gold" style={{ background: 'rgba(255,215,0,0.15)', color: '#FFD700', border: '1px solid rgba(255,215,0,0.3)', fontSize: '0.65rem' }}>
+                  ONGOING
+                </Badge>
+              </div>
+              <div>
+                <h4 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#fff', textTransform: 'capitalize' }}>
+                  {activeContest.type === 'refer' ? 'Referral' : 'Earning'} Championship
+                </h4>
+                <p className="text-sm-muted" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
+                  Climb the ranks by referring new members or maximizing your $FEST earnings.
+                </p>
+              </div>
+              <div className="flex-row-between" style={{ background: 'rgba(0,0,0,0.2)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                <div>
+                  <div style={{ fontSize: '0.6rem', opacity: 0.5 }}>TIME REMAINING</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: '900', color: '#FFD700', fontFamily: 'monospace', letterSpacing: '1px', marginTop: '2px' }}>
+                    {countdown || '—'}
+                  </div>
+                </div>
+                <Button
+                  onClick={() => navigate('/leaderboard')}
+                  style={{ width: 'auto', padding: '0 16px', height: '36px', fontSize: '0.75rem', borderRadius: '8px', boxShadow: 'none' }}
+                >
+                  Leaderboard
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* Mini Game Banner - under promo section */}
+          <div style={{ cursor: 'pointer', lineHeight: 0, borderRadius: '12px', overflow: 'hidden' }} onClick={() => navigate('/games')}>
+            <img
+              src="/minigameBanner.png"
+              alt="Mini Games"
+              style={{
+                width: '100%',
+                height: 'auto',
+                display: 'block',
+                borderRadius: '12px',
+                transform: 'scale(1.06)'
+              }}
+            />
           </div>
         </div>
-      )}
+
+        <div className="home-side-col">
+          {/* Daily Streak Milestone */}
+          <div style={{
+            background: 'var(--secondary-bg)',
+            borderRadius: '14px',
+            border: '1px solid var(--glass-border)',
+            overflow: 'hidden'
+          }}>
+            <StreakMilestone compact />
+          </div>
+
+          {/* Recent Activities */}
+          {user.activities && user.activities.length > 0 && (
+            <div className="stack-vertical" style={{ gap: '10px' }}>
+              <h3 className="game-title" style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', textAlign: 'left', opacity: 0.8 }}>
+                <Activity size={16} className="gold-text" /> Recent Activities
+              </h3>
+              <div className="stack-vertical" style={{ gap: '6px' }}>
+                {[...user.activities]
+                  .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                  .slice(0, 10)
+                  .map((item, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        background: 'rgba(255,255,255,0.02)',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255,255,255,0.04)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '32px', height: '32px', borderRadius: '8px',
+                          background: 'rgba(255,255,255,0.04)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.8rem'
+                        }}>
+                          {item.type === 'task_completion' ? '📋' :
+                           item.type === 'promocode_reward' ? '🎁' :
+                           item.type === 'referral_commission' ? '👥' :
+                           item.type === 'spin_ad_view' ? '📺' :
+                           item.type === 'spin' || item.type === 'spin_game' ? '🎡' :
+                           item.type === 'slot_game' ? '🎰' : '📌'}
+                        </div>
+                        <div>
+                          <div className="font-gaming" style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'capitalize' }}>
+                            {item.type.replace(/_/g, ' ')}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.6rem', opacity: 0.4 }}>
+                            <Clock size={10} />
+                            {item.timestamp ? new Date(item.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                          </div>
+                        </div>
+                      </div>
+                      {item.amount != null && (
+                        <span className="game-title" style={{ fontSize: '0.85rem', color: item.amount > 0 ? '#00c896' : '#ff4d4d' }}>
+                          {item.amount > 0 ? '+' : ''}{item.amount}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
 
       {/* Promotional Modal */}
       {showPromo && !['bonus', 'profit'].includes(user?.tier) && (

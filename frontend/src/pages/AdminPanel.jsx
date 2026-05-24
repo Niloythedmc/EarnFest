@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Card, Button, Badge, Stack } from '../components/UI';
 import {
@@ -24,13 +25,28 @@ import { formatBalance, formatCompactNumber } from '../utils/formatters';
 
 const AdminPanel = () => {
   const { apiBase } = useConfig();
-  const [activeTab, setActiveTab] = useState('platform');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'platform';
+  const setActiveTab = (tabId) => {
+    setSearchParams({ tab: tabId });
+  };
+  
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [chartTimeframe, setChartTimeframe] = useState('7d');
+
 
   // Bot message states
   const [botMsgType, setBotMsgType] = useState('write'); // 'write' or 'send'
@@ -2478,42 +2494,45 @@ const AdminPanel = () => {
       </header>
 
       {/* Tabs — single horizontal row, equal flex; icon-only on very narrow viewports (see index.css) */}
-      <div className="admin-tab-bar" role="tablist" aria-label="Admin sections">
-        {[
-          { id: 'platform', Icon: Settings, label: 'Platform' },
-          { id: 'tasks', Icon: CheckSquare, label: 'Tasks' },
-          { id: 'apiGenerator', Icon: Globe, label: 'API Gen' },
-          { id: 'promos', Icon: Gift, label: 'Promos' },
-          { id: 'referralLinks', Icon: LinkIcon, label: 'Referral Links' },
-          { id: 'leaderboard', Icon: TrendingUp, label: 'Leaderboard' },
-          { id: 'contests', Icon: Trophy, label: 'Contests' },
-          { id: 'plans', Icon: LayoutList, label: 'Plans' },
-          { id: 'stats', Icon: BarChart2, label: 'Stats' },
-          { id: 'partners', Icon: Handshake, label: 'Partners' },
-          { id: 'bot', Icon: MessageSquare, label: 'Bot Msg' },
-        ].map(({ id, Icon, label }) => {
-          const isOn = activeTab === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={isOn}
-              id={`admin-tab-${id}`}
-              title={label}
-              className={`admin-tab${isOn ? ' admin-tab--active' : ''}`}
-              onClick={() => setActiveTab(id)}
-            >
-              <span className="admin-tab-inner">
-                <span className="admin-tab-icon" aria-hidden>
-                  <Icon size={18} strokeWidth={isOn ? 2.25 : 2} />
+      {!isDesktop && (
+        <div className="admin-tab-bar" role="tablist" aria-label="Admin sections">
+          {[
+            { id: 'platform', Icon: Settings, label: 'Platform' },
+            { id: 'tasks', Icon: CheckSquare, label: 'Tasks' },
+            { id: 'apiGenerator', Icon: Globe, label: 'API Gen' },
+            { id: 'promos', Icon: Gift, label: 'Promos' },
+            { id: 'referralLinks', Icon: LinkIcon, label: 'Referral Links' },
+            { id: 'leaderboard', Icon: TrendingUp, label: 'Leaderboard' },
+            { id: 'contests', Icon: Trophy, label: 'Contests' },
+            { id: 'plans', Icon: LayoutList, label: 'Plans' },
+            { id: 'stats', Icon: BarChart2, label: 'Stats' },
+            { id: 'partners', Icon: Handshake, label: 'Partners' },
+            { id: 'bot', Icon: MessageSquare, label: 'Bot Msg' },
+          ].map(({ id, Icon, label }) => {
+            const isOn = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={isOn}
+                id={`admin-tab-${id}`}
+                title={label}
+                className={`admin-tab${isOn ? ' admin-tab--active' : ''}`}
+                onClick={() => setActiveTab(id)}
+              >
+                <span className="admin-tab-inner">
+                  <span className="admin-tab-icon" aria-hidden>
+                    <Icon size={18} strokeWidth={isOn ? 2.25 : 2} />
+                  </span>
+                  <span className="admin-tab-label">{label}</span>
                 </span>
-                <span className="admin-tab-label">{label}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
 
       {activeTab === 'platform' && (
         <Stack gap={40}>

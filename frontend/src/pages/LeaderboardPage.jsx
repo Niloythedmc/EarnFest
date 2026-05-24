@@ -29,6 +29,16 @@ const LeaderboardPage = () => {
   const [countdown, setCountdown] = useState('');
   const countdownRef = useRef(null);
 
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+
   const tg = window.Telegram?.WebApp;
   const headers = { 'x-telegram-init-data': tg?.initData };
 
@@ -419,15 +429,20 @@ const LeaderboardPage = () => {
       {/* Fixed "My Position" bar above navbar */}
       {displayMyPosition && (
         <div style={{
-          position: 'fixed',
-          bottom: '82px',
-          left: '0',
-          right: '0',
+          position: isDesktop ? 'sticky' : 'fixed',
+          bottom: isDesktop ? '0' : '82px',
+          left: isDesktop ? 'auto' : '0',
+          right: isDesktop ? 'auto' : '0',
+          width: '100%',
+          maxWidth: isDesktop ? '600px' : 'none',
+          margin: isDesktop ? '16px auto 0' : '0',
           zIndex: 999,
           padding: '8px 16px',
           background: 'linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,165,0,0.06))',
+          border: isDesktop ? '1px solid rgba(255,215,0,0.3)' : 'none',
           borderTop: '1px solid rgba(255,215,0,0.3)',
           borderBottom: '1px solid rgba(255,215,0,0.3)',
+          borderRadius: isDesktop ? '12px' : '0',
           backdropFilter: 'blur(12px)',
           display: 'flex',
           alignItems: 'center',

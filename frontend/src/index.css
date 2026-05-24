@@ -901,3 +901,103 @@ h2.heading-lg {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--primary-gold);
 }
+
+/* Sidebar Styles */
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #fff;
+}
+
+.sidebar-item--active {
+  background: rgba(212, 175, 55, 0.1) !important;
+  color: var(--primary-gold) !important;
+  border: 1px solid rgba(212, 175, 55, 0.2) !important;
+}
+
+.sidebar-subitem:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #fff !important;
+}
+
+.sidebar-subitem--active {
+  background: rgba(212, 175, 55, 0.08) !important;
+  color: var(--primary-gold) !important;
+}
+
+.sidebar-badge-new {
+  margin-left: auto;
+  background: #ff4b4b;
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 900;
+  padding: 2px 6px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(255,75,75,0.4);
+}
+
+.sidebar-badge-hot {
+  margin-left: auto;
+  font-size: 0.8rem;
+}
+
+.sidebar-resize-handle:hover {
+  background: rgba(212, 175, 55, 0.3);
+}
+
+/* Responsive Grid / Flex System for Laptop & Tablet */
+.app-container-desktop {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+  background: var(--secondary-bg);
+}
+
+.main-content-desktop {
+  flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  position: relative;
+  padding: 40px 30px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Home desktop 2-column grid layout */
+.home-desktop-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .home-desktop-grid {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+}
+
+.home-main-col, .home-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
