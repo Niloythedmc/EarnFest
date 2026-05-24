@@ -323,7 +323,7 @@ router.post('/reward', validateINITData, async (req, res) => {
       return res.status(403).json({ error: 'Forbidden: user mismatch' });
     }
 
-    if (type === REWARD_TYPES.AD) {
+    if (type === REWARD_TYPES.AD || String(type).toLowerCase() === 'ad') {
       return res.status(403).json({
         error: 'Client-side ad rewarding is disabled. Rewards are processed via Server-to-Server callbacks.',
         code: 'client_rewards_disabled'
@@ -338,51 +338,55 @@ router.post('/reward', validateINITData, async (req, res) => {
     }
 
     const userRef = db.collection('users').doc(String(sessionUserId));
-    const userDoc = await userRef.get();
-
-    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
-
-    const userData = userDoc.data();
-    const tierConfig = TIERS[userData.tier] || TIERS.free;
 
     let rewardAmount = 0;
+    let finalBalance = 0;
 
-    if (type === REWARD_TYPES.GAME) {
-      rewardAmount = req.body.amount || 0;
-    } else if (type === REWARD_TYPES.SURVEY) {
-      // SECURITY: Prevent multiple survey rewards
-      if (userData.completedRewards?.includes('survey')) {
-        return res.status(400).json({ error: 'Survey reward already claimed' });
+    const result = await db.runTransaction(async (tx) => {
+      const userDoc = await tx.get(userRef);
+      if (!userDoc.exists) throw new Error('User not found');
+
+      const userData = userDoc.data();
+      const tierConfig = TIERS[userData.tier] || TIERS.free;
+
+      if (type === REWARD_TYPES.SURVEY) {
+        // SECURITY: Transaction locks the document, stopping race condition exploits
+        if (userData.completedRewards?.includes('survey')) {
+          throw new Error('Survey reward already claimed');
+        }
+        rewardAmount = tierConfig.survey || 0.5;
       }
-      rewardAmount = tierConfig.survey || 0.5;
-    }
 
-    const timestamp = new Date().toISOString();
-    const activityEntry = { type, amount: rewardAmount, timestamp };
+      const timestamp = new Date().toISOString();
+      const activityEntry = { type, amount: rewardAmount, timestamp };
 
-    const updateData = {
-      balance: admin.firestore.FieldValue.increment(rewardAmount),
-      totalEarned: admin.firestore.FieldValue.increment(rewardAmount),
-      activities: admin.firestore.FieldValue.arrayUnion(activityEntry),
-    };
+      const updateData = {
+        balance: admin.firestore.FieldValue.increment(rewardAmount),
+        totalEarned: admin.firestore.FieldValue.increment(rewardAmount),
+        activities: admin.firestore.FieldValue.arrayUnion(activityEntry),
+      };
 
-    if (type === REWARD_TYPES.SURVEY) {
-      updateData.completedRewards = admin.firestore.FieldValue.arrayUnion('survey');
-    }
+      if (type === REWARD_TYPES.SURVEY) {
+        updateData.completedRewards = admin.firestore.FieldValue.arrayUnion('survey');
+      }
 
-    await userRef.update(updateData);
+      tx.update(userRef, updateData);
+      finalBalance = (userData.balance || 0) + rewardAmount;
+      return { referredBy: userData.referredBy };
+    });
+
     adjustTotalBalance(rewardAmount);
 
     // Handle Referral Commission (20%) & Active Check
-    if (userData.referredBy && rewardAmount > 0) {
-      await processReferralCommission(sessionUserId, rewardAmount, type, userData.referredBy);
+    if (result.referredBy && rewardAmount > 0) {
+      await processReferralCommission(sessionUserId, rewardAmount, type, result.referredBy);
       await checkAndRewardActiveReferral(sessionUserId);
     }
 
-    res.json({ success: true, newBalance: (userData.balance || 0) + rewardAmount });
+    res.json({ success: true, newBalance: finalBalance });
   } catch (error) {
     console.error('Reward Error:', error);
-    res.status(500).json({ error: 'Reward update failed' });
+    res.status(400).json({ error: error.message || 'Reward update failed' });
   }
 });
 
@@ -452,7 +456,15 @@ router.get('/reward/adsgram', async (req, res) => {
     }
 
     const provided = req.query.token;
-    const isValid = (provided === expected);
+    
+    // SECURITY: Use timingSafeEqual to prevent timing attacks
+    let isValid = false;
+    if (provided && provided.length === expected.length) {
+      isValid = crypto.timingSafeEqual(
+        Buffer.from(provided),
+        Buffer.from(expected)
+      );
+    }
     
     if (!isValid) {
       return res.status(403).send('Forbidden');

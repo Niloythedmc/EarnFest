@@ -25,7 +25,11 @@ router.get('/', async (req, res) => {
     const telegramId = req.query.telegramId;
     const tasksSnapshot = await db.collection('tasks').get();
     let tasks = tasksSnapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .map((doc) => {
+        const data = doc.data();
+        delete data.api; // SECURITY: Never leak backend verification URLs to the frontend
+        return { id: doc.id, ...data };
+      })
       .filter(task => task.status !== 'paused'); // Hide paused tasks from users
 
     if (telegramId) {
@@ -51,73 +55,66 @@ router.get('/', async (req, res) => {
 // Helper function to complete a task for a user
 async function completeTask(telegramId, taskId) {
   const userRef = db.collection('users').doc(telegramId.toString());
-  const userSnap = await userRef.get();
-  if (!userSnap.exists) return { ok: false, error: 'User not found', status: 404 };
-  
-  const userData = userSnap.data();
-  const isAlreadyDone = (userData.taskHistory || []).some((t) => t.taskId === taskId);
-  if (isAlreadyDone) return { ok: false, error: 'Task already completed', status: 400 };
-
-  let finalReward = 0;
+  const taskRef = db.collection('tasks').doc(taskId);
   const timestamp = new Date().toISOString();
 
-  if (taskId === 'task-31743') {
-    finalReward = 0;
-    try {
-      const taskDoc = await db.collection('tasks').doc(taskId).get();
-      if (taskDoc.exists) {
-        await db.collection('tasks').doc(taskId).update({
-          completionCount: admin.firestore.FieldValue.increment(1),
-          lastCompletedAt: timestamp,
-        });
-      }
-    } catch (e) {
-      console.warn('Failed to update task doc completions counter for task-31743:', e);
-    }
-  } else {
-    const taskDoc = await db.collection('tasks').doc(taskId).get();
-    if (!taskDoc.exists) return { ok: false, error: 'Task not found', status: 404 };
-    const taskData = taskDoc.data();
+  const result = await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists) return { ok: false, error: 'User not found', status: 404 };
+    
+    const userData = userSnap.data();
+    const isAlreadyDone = (userData.taskHistory || []).some((t) => t.taskId === taskId);
+    if (isAlreadyDone) return { ok: false, error: 'Task already completed', status: 400 };
 
-    if (taskData.status === 'paused') {
-      return { ok: false, error: 'Task is paused', status: 403 };
+    const taskDoc = await tx.get(taskRef);
+    let finalReward = 0;
+
+    if (taskId !== 'task-31743') {
+      if (!taskDoc.exists) return { ok: false, error: 'Task not found', status: 404 };
+      const taskData = taskDoc.data();
+      if (taskData.status === 'paused') return { ok: false, error: 'Task is paused', status: 403 };
+      finalReward = taskData.reward !== undefined ? parseFloat(taskData.reward) : 0.1;
     }
 
-    finalReward = taskData.reward !== undefined ? parseFloat(taskData.reward) : 0.1;
+    if (taskDoc.exists) {
+      tx.update(taskRef, {
+        completionCount: admin.firestore.FieldValue.increment(1),
+        lastCompletedAt: timestamp,
+      });
+    }
 
-    await db.collection('tasks').doc(taskId).update({
-      completionCount: admin.firestore.FieldValue.increment(1),
-      lastCompletedAt: timestamp,
+    tx.update(userRef, {
+      balance: admin.firestore.FieldValue.increment(finalReward),
+      totalEarned: admin.firestore.FieldValue.increment(finalReward),
+      taskHistory: admin.firestore.FieldValue.arrayUnion({
+        taskId,
+        reward: finalReward,
+        completedAt: timestamp,
+      }),
+      activities: admin.firestore.FieldValue.arrayUnion({
+        type: 'task_completion',
+        taskId,
+        amount: finalReward,
+        timestamp,
+      }),
     });
-  }
 
-  await userRef.update({
-    balance: admin.firestore.FieldValue.increment(finalReward),
-    totalEarned: admin.firestore.FieldValue.increment(finalReward),
-    taskHistory: admin.firestore.FieldValue.arrayUnion({
-      taskId,
-      reward: finalReward,
-      completedAt: timestamp,
-    }),
-    activities: admin.firestore.FieldValue.arrayUnion({
-      type: 'task_completion',
-      taskId,
-      amount: finalReward,
-      timestamp,
-    }),
+    return { ok: true, reward: finalReward, userData };
   });
 
-  incrementTaskCompletions();
-  adjustTotalBalance(finalReward);
+  if (!result.ok) return result;
 
-  if (userData.referredBy) {
-    await processReferralCommission(telegramId, finalReward, REWARD_TYPES.TASK, userData.referredBy);
+  incrementTaskCompletions();
+  adjustTotalBalance(result.reward);
+
+  if (result.userData.referredBy) {
+    await processReferralCommission(telegramId, result.reward, REWARD_TYPES.TASK, result.userData.referredBy);
     await checkAndRewardActiveReferral(telegramId);
   }
 
-  console.log(`[ACTIVITY] User ${telegramId} completed task ${taskId}. Reward: ${finalReward} FEST`);
+  console.log(`[ACTIVITY] User ${telegramId} completed task ${taskId}. Reward: ${result.reward} FEST`);
 
-  return { ok: true, reward: finalReward };
+  return { ok: true, reward: result.reward };
 }
 
 // Adsgram callback URL (GET)

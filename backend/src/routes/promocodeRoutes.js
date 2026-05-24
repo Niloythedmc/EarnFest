@@ -72,10 +72,7 @@ router.post('/claim', async (req, res) => {
     if (!promoDoc.exists) return res.status(404).json({ error: 'Promo not found' });
     const promoData = promoDoc.data();
 
-    // Check claim history again (Safety)
     const claimRef = db.collection('promo_claims').doc(`${userId}_${promoId}`);
-    const claimDoc = await claimRef.get();
-    if (claimDoc.exists) return res.status(400).json({ error: 'Already claimed' });
 
     // Verify Telegram Task if exists
     if (promoData.task && promoData.task.type !== 'bot' && promoData.task.link) {
@@ -91,6 +88,10 @@ router.post('/claim', async (req, res) => {
 
     // Atomic transaction for supply and claim
     const result = await db.runTransaction(async (transaction) => {
+      // SECURITY: Check claim history INSIDE transaction to prevent race conditions
+      const claimDoc = await transaction.get(claimRef);
+      if (claimDoc.exists) throw new Error('Already claimed');
+
       const freshPromo = await transaction.get(promoRef);
       const data = freshPromo.data();
 
