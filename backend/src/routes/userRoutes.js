@@ -244,11 +244,12 @@ router.post('/sync', validateINITData, async (req, res) => {
         }
       }
 
-      // Track active user daily if this is their first visit today (fire-and-forget)
+      // Track active user on every app entry (fire-and-forget)
+      recordActiveUser(actualId);
+
       const todayStr = new Date().toISOString().slice(0, 10);
       if (existingData.lastActiveDate !== todayStr) {
         updates.lastActiveDate = todayStr;
-        recordActiveUser(actualId);
       }
 
       // Always update search index on entry to keep it fresh
