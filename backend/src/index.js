@@ -80,7 +80,7 @@ app.get('/Earnfest.webp', (req, res) => {
 
 app.get('/api/health/diagnostics', (req, res) => {
   res.json({
-    firebase: !!process.env.FIREBASE_PROJECT_ID,
+    mongodb: !!process.env.MONGODB_URI,
     nowpayments_api: !!process.env.NOWPAYMENTS_API_KEY,
     nowpayments_public: !!process.env.NOWPAYMENTS_PUBLIC_KEY,
     telegram_bot: !!process.env.TELEGRAM_BOT_TOKEN,

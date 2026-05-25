@@ -1,5 +1,4 @@
-import { db } from '../config/firebase.js';
-import admin from 'firebase-admin';
+import { db } from '../config/db.js';
 
 /**
  * Anti-Autoclicker Manager

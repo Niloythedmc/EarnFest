@@ -167,7 +167,8 @@ class CollectionReference {
       filter: queryObj.filter || {},
       sort: queryObj.sort || null,
       limit: queryObj.limit || null,
-      offset: queryObj.offset || null
+      offset: queryObj.offset || null,
+      projection: queryObj.projection || null
     };
   }
 
@@ -217,19 +218,90 @@ class CollectionReference {
     });
   }
 
+  offset(num) {
+    return new CollectionReference(this.collectionName, {
+      ...this.queryObj,
+      offset: num
+    });
+  }
+
+  select(...fields) {
+    const projection = {};
+    fields.forEach(f => {
+      projection[f] = 1;
+    });
+    return new CollectionReference(this.collectionName, {
+      ...this.queryObj,
+      projection
+    });
+  }
+
+  startAfter(lastDoc) {
+    const lastId = lastDoc instanceof DocumentSnapshot ? lastDoc.id : (lastDoc?.id || lastDoc);
+    const newFilter = { ...this.queryObj.filter };
+    let newSort = this.queryObj.sort ? { ...this.queryObj.sort } : null;
+
+    if (this.queryObj.sort && Object.keys(this.queryObj.sort).length > 0) {
+      const sortField = Object.keys(this.queryObj.sort)[0];
+      const sortDir = this.queryObj.sort[sortField];
+      const lastVal = lastDoc instanceof DocumentSnapshot ? lastDoc.get(sortField) : null;
+      const normalizedLastVal = lastVal === undefined ? null : lastVal;
+
+      // Secondary sort is always _id: 1
+      if (!newSort._id) {
+        newSort = { ...newSort, _id: 1 };
+      }
+
+      const gtOrLt = sortDir === 1 ? '$gt' : '$lt';
+      const orConditions = [
+        { [sortField]: { [gtOrLt]: normalizedLastVal } },
+        { [sortField]: normalizedLastVal, _id: { $gt: lastId } }
+      ];
+
+      if (newFilter.$and) {
+        newFilter.$and.push({ $or: orConditions });
+      } else if (Object.keys(newFilter).length > 0) {
+        const existingConditions = Object.entries(newFilter).map(([k, v]) => ({ [k]: v }));
+        existingConditions.forEach(cond => {
+          const k = Object.keys(cond)[0];
+          delete newFilter[k];
+        });
+        newFilter.$and = [...existingConditions, { $or: orConditions }];
+      } else {
+        newFilter.$or = orConditions;
+      }
+    } else {
+      newFilter._id = { $gt: lastId };
+      newSort = { _id: 1 };
+    }
+
+    return new CollectionReference(this.collectionName, {
+      ...this.queryObj,
+      filter: newFilter,
+      sort: newSort
+    });
+  }
+
   async add(data) {
     const session = transactionStorage.getStore();
     const id = Math.random().toString(36).substring(2, 15);
     const doc = { _id: id, ...data };
     await mongoDb.collection(this.collectionName).insertOne(doc, { session });
-    return { id };
+    return new DocumentReference(this.collectionName, id);
   }
 
   async get() {
     const session = transactionStorage.getStore();
-    let cursor = mongoDb.collection(this.collectionName).find(this.queryObj.filter, { session });
+    const options = { session };
+    if (this.queryObj.projection) {
+      options.projection = this.queryObj.projection;
+    }
+    let cursor = mongoDb.collection(this.collectionName).find(this.queryObj.filter, options);
     if (this.queryObj.sort) {
       cursor = cursor.sort(this.queryObj.sort);
+    }
+    if (this.queryObj.offset) {
+      cursor = cursor.skip(this.queryObj.offset);
     }
     if (this.queryObj.limit) {
       cursor = cursor.limit(this.queryObj.limit);
@@ -272,8 +344,43 @@ class Transaction {
   }
 }
 
+// Mimics a Firestore WriteBatch
+class WriteBatch {
+  constructor() {
+    this.ops = [];
+  }
+
+  set(docRef, data, options = {}) {
+    this.ops.push({ type: 'set', docRef, data, options });
+    return this;
+  }
+
+  update(docRef, data) {
+    this.ops.push({ type: 'update', docRef, data });
+    return this;
+  }
+
+  delete(docRef) {
+    this.ops.push({ type: 'delete', docRef });
+    return this;
+  }
+
+  async commit() {
+    for (const op of this.ops) {
+      if (op.type === 'set') {
+        await op.docRef.set(op.data, op.options);
+      } else if (op.type === 'update') {
+        await op.docRef.update(op.data);
+      } else if (op.type === 'delete') {
+        await op.docRef.delete();
+      }
+    }
+  }
+}
+
 const db = {
   collection: (name) => new CollectionReference(name),
+  batch: () => new WriteBatch(),
   runTransaction: async (updateFunction) => {
     try {
       const session = client.startSession();

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { db } from '../config/firebase.js';
+import { db } from '../config/db.js';
 
 const handleBotBlock = async (chatId, error) => {
   if (!chatId) return;

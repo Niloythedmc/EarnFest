@@ -4,13 +4,13 @@
  * Interstitials: Adsgram → immediately RichAds → 30s cooldown → repeat.
  */
 
-const REWARD_BLOCK_IDS = ['31738', '31739', '31740', '31742'];
-const TASK_BLOCK_ID = 'task-31743';
+const REWARD_BLOCK_IDS = ['32312', '32313', '32314', '32315'];
+const TASK_BLOCK_ID = 'task-32316';
 const INTERSTITIAL_BLOCK_IDS = [
-  'int-31734',
-  'int-31735',
-  'int-31736',
-  'int-31737'
+  'int-32317',
+  'int-32318',
+  'int-32319',
+  'int-32320'
 ];
 
 const RICHADS_PUB_ID = '1011428';

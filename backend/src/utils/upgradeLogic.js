@@ -1,4 +1,4 @@
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { sendTelegramMessage } from './bot.js';
 import { TIERS } from '../config/tiers.js';
 import { recordTierPurchase } from './stats.js';

@@ -1,5 +1,5 @@
 import express from 'express';
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { validateINITData } from '../middleware/auth.js';
 import { TIERS, REWARD_TYPES } from '../config/tiers.js';
 import { SPIN_WHEEL_PRIZES, SPIN_WHEEL_CONFIG, verifyProbabilityConfig } from '../config/gameProbabilities.js';

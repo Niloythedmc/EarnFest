@@ -264,7 +264,7 @@ const TasksPage = () => {
 
 
   const categorizedTasks = useMemo(() => {
-    const AD_TASK_ID = 'task-31743';
+    const AD_TASK_ID = 'task-32316';
     const groups = {
       Daily: [],
       Adsgram: [],
@@ -435,7 +435,7 @@ const TasksPage = () => {
             }}
           >
             <AdsgramTask
-              blockId={task.adsgramBlockId || 'task-31743'}
+              blockId={task.adsgramBlockId || 'task-32316'}
               onBannerNotFound={() => setAdTaskAvailable(false)}
               onReward={() => {
                 alert(t('task_verified') || "Ad completed! Your reward will be processed shortly.");

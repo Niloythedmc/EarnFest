@@ -1,4 +1,4 @@
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { sendTelegramMessage } from './bot.js';
 
 const CONTESTS_COLLECTION = 'contests';

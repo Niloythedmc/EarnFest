@@ -1,6 +1,6 @@
 import express from 'express';
 import { sendTelegramPhoto, sendTelegramMessage } from '../utils/bot.js';
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import axios from 'axios';
 import crypto from 'crypto';
 import { transferFEST } from '../utils/tonTransfer.js';

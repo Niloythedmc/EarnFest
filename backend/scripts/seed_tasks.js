@@ -1,4 +1,4 @@
-import { db } from '../config/firebase.js';
+import { db } from '../config/db.js';
 
 const tasks = [
   {

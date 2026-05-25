@@ -1,6 +1,6 @@
 import { TonClient, Address } from '@ton/ton';
 import { getHttpEndpoint } from '@orbs-network/ton-access';
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { TIERS } from '../config/tiers.js';
 import { getTonPrice } from './price.js';
 import { processTierUpgrade } from './upgradeLogic.js';

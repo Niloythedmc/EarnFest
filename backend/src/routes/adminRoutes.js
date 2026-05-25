@@ -1,5 +1,5 @@
 import express from 'express';
-import { db } from '../config/firebase.js';
+import { db } from '../config/db.js';
 import { validateINITData, verifyAdmin } from '../middleware/auth.js';
 import { ensureStatsDocExists } from '../utils/stats.js';
 import axios from 'axios';

@@ -1,5 +1,5 @@
 import express from 'express';
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { validateINITData } from '../middleware/auth.js';
 import axios from 'axios';
 import { checkChatMember } from '../utils/bot.js';
@@ -69,7 +69,7 @@ async function completeTask(telegramId, taskId) {
     const taskDoc = await tx.get(taskRef);
     let finalReward = 0;
 
-    if (taskId !== 'task-31743') {
+    if (taskId !== 'task-32316') {
       if (!taskDoc.exists) return { ok: false, error: 'Task not found', status: 404 };
       const taskData = taskDoc.data();
       if (taskData.status === 'paused') return { ok: false, error: 'Task is paused', status: 403 };

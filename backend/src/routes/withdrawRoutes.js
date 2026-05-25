@@ -1,5 +1,5 @@
 import express from 'express';
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { TIERS } from '../config/tiers.js';
 import { incrementWithdrawals } from '../utils/stats.js';
 import { sendTelegramMessage } from '../utils/bot.js';

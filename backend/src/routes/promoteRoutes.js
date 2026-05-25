@@ -1,5 +1,5 @@
 import express from 'express';
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { validateINITData } from '../middleware/auth.js';
 import { verifyTonTransaction } from '../utils/ton.js';
 import { getTonPrice } from '../utils/price.js';

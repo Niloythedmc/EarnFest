@@ -1,5 +1,5 @@
 import express from 'express';
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { validateINITData } from '../middleware/auth.js';
 import { checkChatMember } from '../utils/bot.js';
 import { incrementPromos, adjustTotalBalance } from '../utils/stats.js';

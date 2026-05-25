@@ -1,4 +1,4 @@
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 
 const STATS_REF = () => db.collection('users').doc('AppStats');
 const USER_INDEX_REF = () => db.collection('appdata').doc('users');

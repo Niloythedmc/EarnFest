@@ -1,4 +1,4 @@
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { checkAdRewardMembership } from './telegramChats.js';
 
 /**

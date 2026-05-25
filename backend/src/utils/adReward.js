@@ -1,4 +1,4 @@
-import admin, { db } from '../config/firebase.js';
+import admin, { db } from '../config/db.js';
 import { TIERS, REWARD_TYPES } from '../config/tiers.js';
 import { incrementRewardAds, adjustTotalBalance } from './stats.js';
 import { checkAdRewardMembership } from './telegramChats.js';
