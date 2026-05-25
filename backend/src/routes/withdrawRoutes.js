@@ -119,21 +119,72 @@ router.post('/offchain/withdraw', validateINITData, async (req, res) => {
     }
 
     // Check withdrawal requirements
-    const taskCount = (userData.taskHistory || []).length;
-    const activities = userData.activities || [];
-    const miniGameCount = activities.filter(a =>
-      a.type === 'spin' || a.type === 'spin_game' || a.type === 'slot_game' || a.type === 'mines_game' || a.type === 'pvp_join'
-    ).length;
-    const streak = userData.dailyStreak || 0;
+    // Requirement 1: All active Tasks should be completed
+    const tasksSnapshot = await db.collection('tasks').get();
+    const activeTasks = tasksSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(task => task.status !== 'paused');
 
-    if (taskCount < 10) {
-      return res.status(400).json({ error: `Minimum 10 tasks required for withdrawal. You have completed ${taskCount} tasks.` });
+    const completedTaskIds = new Set((userData.taskHistory || []).map(t => t.taskId));
+    const uncompletedTasks = activeTasks.filter(task => !completedTaskIds.has(task.id));
+
+    if (uncompletedTasks.length > 0) {
+      const taskNames = uncompletedTasks.map(t => t.title).join(', ');
+      return res.status(400).json({
+        error: `All active tasks must be completed before withdrawal. Remaining task(s): ${taskNames}.`
+      });
     }
-    if (miniGameCount < 10) {
-      return res.status(400).json({ error: `Minimum 10 mini-games required for withdrawal. You have played ${miniGameCount} mini-games.` });
+
+    // Requirement 2 & 3: Game plays today
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const activities = userData.activities || [];
+
+    const slotPlaysToday = activities.filter(a => {
+      if (a.type !== 'slot_game') return false;
+      const activityDate = new Date(a.timestamp).toISOString().slice(0, 10);
+      return activityDate === todayStr;
+    }).length;
+
+    const spinPlaysToday = activities.filter(a => {
+      if (a.type !== 'spin' && a.type !== 'spin_game') return false;
+      const activityDate = new Date(a.timestamp).toISOString().slice(0, 10);
+      return activityDate === todayStr;
+    }).length;
+
+    if (slotPlaysToday < 10) {
+      return res.status(400).json({
+        error: `You must play the Slot Machine 10 times today to withdraw. You have played it ${slotPlaysToday} time(s) today.`
+      });
     }
+
+    if (spinPlaysToday < 10) {
+      return res.status(400).json({
+        error: `You must play the Spin Wheel 10 times today to withdraw. You have played it ${spinPlaysToday} time(s) today.`
+      });
+    }
+
+    // Requirement 4: Complete 3 daily streak
+    const streak = userData.dailyStreak || 0;
     if (streak < 3) {
-      return res.status(400).json({ error: `Minimum 3-day streak required for withdrawal. Your current streak is ${streak} day(s).` });
+      return res.status(400).json({
+        error: `Minimum 3-day daily streak required for withdrawal. Your current streak is ${streak} day(s).`
+      });
+    }
+
+    // Requirement 5: Joined at least 5 days ago
+    const createdAt = userData.createdAt;
+    let daysSinceJoined = 0;
+    if (createdAt) {
+      const createdDate = new Date(createdAt);
+      const diffMs = Date.now() - createdDate.getTime();
+      daysSinceJoined = diffMs / (1000 * 60 * 60 * 24);
+    }
+
+    if (daysSinceJoined < 5) {
+      const remainingDays = (5 - daysSinceJoined).toFixed(1);
+      return res.status(400).json({
+        error: `Your account must be at least 5 days old to withdraw. Please wait another ${remainingDays} day(s).`
+      });
     }
 
     // Check for multi-account on same IP/device (Removed based on request)
@@ -163,6 +214,22 @@ router.post('/offchain/withdraw', validateINITData, async (req, res) => {
       })
     });
 
+    // Fetch last withdrawal information if available
+    const prevWithdrawSnapshot = await db.collection('withdrawals')
+      .where('userId', '==', sessionUserId)
+      .orderBy('requestDate', 'desc')
+      .limit(1)
+      .get();
+
+    let lastWithdrawInfo = 'None';
+    if (!prevWithdrawSnapshot.empty) {
+      const prev = prevWithdrawSnapshot.docs[0].data();
+      const prevDate = prev.requestDate ? new Date(prev.requestDate).toLocaleString('en-US', { timeZone: 'UTC' }) : 'Unknown';
+      lastWithdrawInfo = `<code>${prev.amount} $FEST</code> (${prev.status}) on ${prevDate}`;
+    }
+
+    const joinDate = userData.createdAt ? new Date(userData.createdAt).toLocaleString('en-US', { timeZone: 'UTC' }) : 'Unknown';
+
     // Create withdrawal request
     const withdrawRef = await db.collection('withdrawals').add({
       userId: sessionUserId,
@@ -179,7 +246,7 @@ router.post('/offchain/withdraw', validateINITData, async (req, res) => {
     try {
       const displayName = userData.firstName || userData.username || 'User';
       const userLink = `tg://user?id=${sessionUserId}`;
-      const msgText = `🔔 <b>New Withdrawal Request</b>\n\n👤 <b>User:</b> <a href="${userLink}">${displayName}</a> (ID: <code>${sessionUserId}</code>)\n💰 <b>Amount:</b> ${parsedAmount.toFixed(0)} $FEST\n\nUse WalletFather to pay.`;
+      const msgText = `🔔 <b>New Withdrawal Request</b>\n\n👤 <b>User:</b> <a href="${userLink}">${displayName}</a> (ID: <code>${sessionUserId}</code>)\n📅 <b>Joining Date:</b> ${joinDate}\n⏮️ <b>Last Withdrawal:</b> ${lastWithdrawInfo}\n💰 <b>Amount:</b> ${parsedAmount.toFixed(0)} $FEST\n\nUse WalletFather to pay.`;
       await sendTelegramMessage('-1003750183466', msgText, {
         inline_keyboard: [[
           { text: '🟢 Confirm Withdrawal', callback_data: `confirm_offchain_withdraw_${withdrawRef.id}` }

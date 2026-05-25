@@ -25,19 +25,23 @@ const WithdrawPage = () => {
   const [localTiers, setLocalTiers] = useState(tiers);
   const [offchainConnected, setOffchainConnected] = useState(false);
   const [checkingOffchain, setCheckingOffchain] = useState(false);
+  const [tasks, setTasks] = useState([]);
 
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [offerRes, configRes, settingsRes] = await Promise.all([
+        const tg = window.Telegram?.WebApp;
+        const [offerRes, configRes, settingsRes, tasksRes] = await Promise.all([
           axios.get(`${apiBase}/api/withdraw/offer`),
           axios.get(`${apiBase}/api/withdraw/config`),
-          axios.get(`${apiBase}/api/admin/settings`, { headers: { 'x-telegram-init-data': window.Telegram?.WebApp?.initData } }).catch(() => ({ data: null }))
+          axios.get(`${apiBase}/api/admin/settings`, { headers: { 'x-telegram-init-data': tg?.initData } }).catch(() => ({ data: null })),
+          axios.get(`${apiBase}/api/tasks`, { headers: { 'x-telegram-init-data': tg?.initData } }).catch(() => ({ data: [] }))
         ]);
         if (offerRes.data.active) setActiveOffer(offerRes.data);
         if (configRes.data.tiers) setLocalTiers(configRes.data.tiers);
         if (settingsRes.data) setGlobalSettings(settingsRes.data);
+        if (tasksRes.data) setTasks(tasksRes.data);
       } catch {
         console.error('Failed to fetch data');
       }
@@ -110,15 +114,40 @@ const WithdrawPage = () => {
 
   // Withdrawal requirements
   const activities = user?.activities || [];
-  const taskCount = (user?.taskHistory || []).length;
-  const miniGameCount = activities.filter(a =>
-    a.type === 'spin' || a.type === 'spin_game' || a.type === 'slot_game' || a.type === 'mines_game' || a.type === 'pvp_join'
-  ).length;
+  const completedTaskIds = new Set((user?.taskHistory || []).map(t => t.taskId));
+  const activeTasks = tasks.filter(t => t.status !== 'paused');
+  const allTasksCompleted = activeTasks.length === 0 ? true : activeTasks.every(t => completedTaskIds.has(t.id));
+  const completedCount = activeTasks.filter(t => completedTaskIds.has(t.id)).length;
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const slotPlaysToday = activities.filter(a => {
+    if (a.type !== 'slot_game') return false;
+    const activityDate = new Date(a.timestamp).toISOString().slice(0, 10);
+    return activityDate === todayStr;
+  }).length;
+
+  const spinPlaysToday = activities.filter(a => {
+    if (a.type !== 'spin' && a.type !== 'spin_game') return false;
+    const activityDate = new Date(a.timestamp).toISOString().slice(0, 10);
+    return activityDate === todayStr;
+  }).length;
+
   const streak = user?.dailyStreak || 0;
+
+  const createdAt = user?.createdAt;
+  let daysSinceJoined = 0;
+  if (createdAt) {
+    const createdDate = new Date(createdAt);
+    const diffMs = Date.now() - createdDate.getTime();
+    daysSinceJoined = diffMs / (1000 * 60 * 60 * 24);
+  }
+
   const requirements = [
-    { label: 'Complete 10 Tasks', met: taskCount >= 10, current: taskCount, required: 10 },
-    { label: 'Play 10 Mini-Games', met: miniGameCount >= 10, current: miniGameCount, required: 10 },
-    { label: '3-Day Streak', met: streak >= 3, current: streak, required: 3 },
+    { label: 'Complete All Active Tasks', met: allTasksCompleted, current: completedCount, required: activeTasks.length },
+    { label: 'Play Slot Machine 10 Times Today', met: slotPlaysToday >= 10, current: slotPlaysToday, required: 10 },
+    { label: 'Play Spin Wheel 10 Times Today', met: spinPlaysToday >= 10, current: spinPlaysToday, required: 10 },
+    { label: '3-Day Daily Streak', met: streak >= 3, current: streak, required: 3 },
+    { label: 'Account Age >= 5 Days', met: daysSinceJoined >= 5, current: Math.floor(daysSinceJoined), required: 5 },
   ];
   const canWithdraw = requirements.every(r => r.met);
 

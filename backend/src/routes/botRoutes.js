@@ -413,16 +413,17 @@ router.post('/webhook', async (req, res) => {
 
         const wRef = db.collection('withdrawals').doc(withdrawId);
         const wDoc = await wRef.get();
-        if (wDoc.exists && wDoc.data().status === 'PENDING') {
+        if (wDoc.exists && (wDoc.data().status === 'PENDING' || wDoc.data().status === 'pending')) {
           const wData = wDoc.data();
-          const { address: targetAddress, amount, userId } = wData;
+          const { address: targetAddress, amount, userId, uid, tgId } = wData;
+          const targetUserId = String(userId || uid || tgId || '');
 
-          const uRef = db.collection('users').doc(userId.toString());
+          const uRef = db.collection('users').doc(targetUserId);
           const uDoc = await uRef.get();
-          const uData = uDoc.exists ? uDoc.data() : { firstName: 'User', telegramId: userId };
+          const uData = uDoc.exists ? uDoc.data() : { firstName: 'User', telegramId: targetUserId };
 
           try {
-            const transferResult = await transferFEST(targetAddress, amount.toString(), userId, withdrawId);
+            const transferResult = await transferFEST(targetAddress, amount.toString(), targetUserId, withdrawId);
             if (transferResult.success) {
               await wRef.update({
                 status: 'COMPLETED',
@@ -521,13 +522,15 @@ router.post('/webhook', async (req, res) => {
 
         const wRef = db.collection('withdrawals').doc(withdrawId);
         const wDoc = await wRef.get();
-        if (wDoc.exists && wDoc.data().status === 'PENDING') {
+        if (wDoc.exists && (wDoc.data().status === 'PENDING' || wDoc.data().status === 'pending')) {
           const wData = wDoc.data();
-          const { amount, userId } = wData;
+          const { amount, userId, uid, tgId, currency } = wData;
+          const targetUserId = String(userId || uid || tgId || '');
+          const targetCurrency = String(currency || 'FEST').toUpperCase();
 
-          const uRef = db.collection('users').doc(userId.toString());
+          const uRef = db.collection('users').doc(targetUserId);
           const uDoc = await uRef.get();
-          const uData = uDoc.exists ? uDoc.data() : { firstName: 'User', telegramId: userId };
+          const uData = uDoc.exists ? uDoc.data() : { firstName: 'User', telegramId: targetUserId };
 
           try {
             // Use WalletFather to pay
@@ -535,7 +538,7 @@ router.post('/webhook', async (req, res) => {
             const WALLET_FATHER_PRIVATE_KEY = process.env.WALLETFATHER_PRIVATE_KEY;
 
             const wfRes = await fetch(
-              `${WALLET_FATHER_API_BASE}/pay/${WALLET_FATHER_PRIVATE_KEY}-${userId}-${amount}-FEST`,
+              `${WALLET_FATHER_API_BASE}/pay/${WALLET_FATHER_PRIVATE_KEY}-${targetUserId}-${amount}-${targetCurrency}`,
               { method: 'POST' }
             );
             const wfData = await wfRes.json().catch(() => ({}));
@@ -548,7 +551,7 @@ router.post('/webhook', async (req, res) => {
               });
               decrementPendingWithdrawals();
 
-              console.log(`[WITHDRAWAL_COMPLETED] Withdrawal request ${withdrawId} completed successfully. User: ${userId}, Amount: ${amount} FEST, Tx: ${wfData.hash || 'N/A'}`);
+              console.log(`[WITHDRAWAL_COMPLETED] Withdrawal request ${withdrawId} completed successfully. User: ${targetUserId}, Amount: ${amount} ${targetCurrency}, Tx: ${wfData.hash || 'N/A'}`);
 
               try {
                 await axios.post(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
@@ -560,15 +563,15 @@ router.post('/webhook', async (req, res) => {
 
               // Send confirmation to user
               try {
-                const userMsg = `✅ <b>Withdrawal Successful!</b>\n\nYour withdrawal of <b>${amount.toFixed(0)} $FEST</b> has been processed successfully via WalletFather.\n\nFunds have been sent to your connected wallet! 🚀`;
-                await sendTelegramMessage(userId, userMsg);
+                const userMsg = `✅ <b>Withdrawal Successful!</b>\n\nYour withdrawal of <b>${amount.toFixed(0)} $${targetCurrency}</b> has been processed successfully via WalletFather.\n\nFunds have been sent to your connected wallet! 🚀`;
+                await sendTelegramMessage(targetUserId, userMsg);
               } catch (e) {
                 console.error("Failed to notify user about successful withdrawal", e);
               }
 
               const handle = uData.firstName || uData.username || 'User';
-              const profileLink = `tg://user?id=${uData.telegramId || userId}`;
-              const publicMsg = `✅ Successful $FEST Withdrawal! 💸\n\n👤 User: <a href="${profileLink}">${handle}</a>\n💰 Amount: <b>${amount.toFixed(0)} $FEST</b>\n\nFunds have been successfully sent via <a href="https://t.me/WF_web3_Bot/wallet">WalletFather</a>! 🚀`;
+              const profileLink = `tg://user?id=${uData.telegramId || targetUserId}`;
+              const publicMsg = `✅ Successful $${targetCurrency} Withdrawal! 💸\n\n👤 User: <a href="${profileLink}">${handle}</a>\n💰 Amount: <b>${amount.toFixed(0)} $${targetCurrency}</b>\n\nFunds have been successfully sent via <a href="https://t.me/WF_web3_Bot/wallet">WalletFather</a>! 🚀`;
 
               await sendTelegramMessage('@EarnFestChat', publicMsg, {
                 inline_keyboard: [
@@ -585,7 +588,7 @@ router.post('/webhook', async (req, res) => {
                 error: errMsg
               });
               decrementPendingWithdrawals();
-              console.error(`[WITHDRAWAL_FAILED] Withdrawal request ${withdrawId} failed. User: ${userId}, Amount: ${amount} FEST. Error: ${errMsg}`);
+              console.error(`[WITHDRAWAL_FAILED] Withdrawal request ${withdrawId} failed. User: ${targetUserId}, Amount: ${amount} ${targetCurrency}. Error: ${errMsg}`);
 
               // REFUND LOGIC
               const refundAmount = parseFloat(amount);
@@ -606,8 +609,8 @@ router.post('/webhook', async (req, res) => {
 
               // NOTIFY USER
               try {
-                const notifyText = `⚠️ <b>Withdrawal Failed & Refunded</b>\n\nYour withdrawal request for <b>${refundAmount.toFixed(0)} $FEST</b> could not be processed. The amount has been fully refunded to your balance.\n\nPlease try again later!`;
-                await sendTelegramMessage(userId, notifyText);
+                const notifyText = `⚠️ <b>Withdrawal Failed & Refunded</b>\n\nYour withdrawal request for <b>${refundAmount.toFixed(0)} $${targetCurrency}</b> could not be processed. The amount has been fully refunded to your balance.\n\nPlease try again later!`;
+                await sendTelegramMessage(targetUserId, notifyText);
               } catch (e) {
                 console.error("Failed to notify user about refund", e);
               }
