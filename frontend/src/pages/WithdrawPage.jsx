@@ -115,9 +115,8 @@ const WithdrawPage = () => {
   // Withdrawal requirements
   const activities = user?.activities || [];
   const completedTaskIds = new Set((user?.taskHistory || []).map(t => t.taskId));
-  const activeTasks = tasks.filter(t => t.status !== 'paused');
-  const allTasksCompleted = activeTasks.length === 0 ? true : activeTasks.every(t => completedTaskIds.has(t.id));
-  const completedCount = activeTasks.filter(t => completedTaskIds.has(t.id)).length;
+  const completedCount = completedTaskIds.size;
+  const tasksRequirementMet = completedCount >= 10;
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const slotPlaysToday = activities.filter(a => {
@@ -143,7 +142,7 @@ const WithdrawPage = () => {
   }
 
   const requirements = [
-    { label: 'Complete All Active Tasks', met: allTasksCompleted, current: completedCount, required: activeTasks.length },
+    { label: 'Complete 10 Tasks (Lifetime)', met: tasksRequirementMet, current: completedCount, required: 10 },
     { label: 'Play Slot Machine 10 Times Today', met: slotPlaysToday >= 10, current: slotPlaysToday, required: 10 },
     { label: 'Play Spin Wheel 10 Times Today', met: spinPlaysToday >= 10, current: spinPlaysToday, required: 10 },
     { label: '3-Day Daily Streak', met: streak >= 3, current: streak, required: 3 },

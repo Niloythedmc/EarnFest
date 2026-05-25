@@ -119,19 +119,13 @@ router.post('/offchain/withdraw', validateINITData, async (req, res) => {
     }
 
     // Check withdrawal requirements
-    // Requirement 1: All active Tasks should be completed
-    const tasksSnapshot = await db.collection('tasks').get();
-    const activeTasks = tasksSnapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(task => task.status !== 'paused');
-
+    // Requirement 1: Complete at least 10 tasks (Lifetime)
     const completedTaskIds = new Set((userData.taskHistory || []).map(t => t.taskId));
-    const uncompletedTasks = activeTasks.filter(task => !completedTaskIds.has(task.id));
+    const completedCount = completedTaskIds.size;
 
-    if (uncompletedTasks.length > 0) {
-      const taskNames = uncompletedTasks.map(t => t.title).join(', ');
+    if (completedCount < 10) {
       return res.status(400).json({
-        error: `All active tasks must be completed before withdrawal. Remaining task(s): ${taskNames}.`
+        error: `You must complete at least 10 tasks in your lifetime to withdraw. You have completed ${completedCount} task(s) so far.`
       });
     }
 
