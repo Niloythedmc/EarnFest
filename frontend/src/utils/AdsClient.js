@@ -170,17 +170,11 @@ export const AdsClient = {
           lastAdViewTime = Date.now();
           // ONLY call onReward if ad was actually finished
           if (result?.done) {
-            // Immediately show Monetag ad (rewarded interstitial or popup randomly)
+            // Immediately show Monetag ad (use rewarded interstitial type: 'end' to avoid popup blocking)
             if (window.show_11071748) {
-              const usePop = Math.random() < 0.5;
               try {
-                if (usePop) {
-                  console.log('[AdsClient] Showing Monetag Rewarded Popup for user:', tgId);
-                  await window.show_11071748({ type: 'pop', ymid: tgId });
-                } else {
-                  console.log('[AdsClient] Showing Monetag Rewarded Interstitial for user:', tgId);
-                  await window.show_11071748({ type: 'end', ymid: tgId });
-                }
+                console.log('[AdsClient] Showing Monetag Rewarded Interstitial for user:', tgId);
+                await window.show_11071748({ type: 'end', ymid: tgId });
               } catch (monetagErr) {
                 console.warn('[AdsClient] Monetag ad failed or was dismissed:', monetagErr);
               }
@@ -227,9 +221,47 @@ export const AdsClient = {
       interstitialInProgress = true;
       lastAdViewTime = now;
 
-      console.log(`[AdsClient] Showing RichAds interstitial. Count in last hour: ${check.views.length}`);
+      const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || 'unknown';
+      const choices = ['richads', 'monetag', 'adexium'];
+      const choice = choices[Math.floor(Math.random() * choices.length)];
+      
+      console.log(`[AdsClient] Showing interstitial (${choice}). Count in last hour: ${check.views.length}`);
 
-      const res = await showRichAdsInterstitial();
+      let res = null;
+      if (choice === 'richads') {
+        res = await showRichAdsInterstitial();
+      } else if (choice === 'monetag') {
+        if (window.show_11071748) {
+          try {
+            res = await window.show_11071748({ type: 'end', ymid: tgId });
+          } catch (err) {
+            console.warn('[AdsClient] Monetag interstitial failed, falling back to RichAds:', err);
+            res = await showRichAdsInterstitial();
+          }
+        } else {
+          res = await showRichAdsInterstitial();
+        }
+      } else if (choice === 'adexium') {
+        if (window.AdexiumWidget) {
+          try {
+            const widget = new window.AdexiumWidget({
+              wid: '26ae87d5-b62e-4ff4-a518-01da857dffdd',
+              adFormat: 'interstitial'
+            });
+            widget.requestAd('interstitial');
+            widget.on('adReceived', (ad) => {
+              widget.displayAd(ad);
+            });
+            res = { done: true };
+          } catch (err) {
+            console.warn('[AdsClient] Adexium interstitial failed, falling back to RichAds:', err);
+            res = await showRichAdsInterstitial();
+          }
+        } else {
+          res = await showRichAdsInterstitial();
+        }
+      }
+
       interstitialInProgress = false;
       return res;
     } catch (e) {

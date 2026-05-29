@@ -449,36 +449,16 @@ async function recordAndCheckAdCallback(telegramId, type) {
         return { error: 'User not found', status: 404 };
       }
 
-      const userData = userDoc.data();
-      
       const now = Date.now();
-      let lastAdsgram = userData.lastAdsgramCallbackAt || null;
-      let lastMonetag = userData.lastMonetagCallbackAt || null;
-
+      const updates = {};
       if (type === 'adsgram') {
-        lastAdsgram = now;
+        updates.lastAdsgramCallbackAt = now;
       } else if (type === 'monetag') {
-        lastMonetag = now;
+        updates.lastMonetagCallbackAt = now;
       }
-
-      // Update timestamps
-      const updates = {
-        lastAdsgramCallbackAt: lastAdsgram,
-        lastMonetagCallbackAt: lastMonetag
-      };
       tx.update(userRef, updates);
 
-      // Check if both are set and within 5 minutes (300,000 ms)
-      if (lastAdsgram && lastMonetag && Math.abs(lastAdsgram - lastMonetag) < 5 * 60 * 1000) {
-        // Reset timestamps to consume this pair
-        tx.update(userRef, {
-          lastAdsgramCallbackAt: null,
-          lastMonetagCallbackAt: null
-        });
-        return { triggerReward: true };
-      }
-
-      return { triggerReward: false };
+      return { triggerReward: true };
     });
 
     return outcome;
