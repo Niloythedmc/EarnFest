@@ -10,7 +10,7 @@ import { checkMultiAccountOnDevice, updateUserDeviceInfo } from './deviceFingerp
 export const MIN_AD_REWARD_INTERVAL_MS = Number(process.env.AD_REWARD_COOLDOWN_MS) || 28000;
 
 export const AD_CYCLE_LIMIT = 20;
-export const AD_CYCLE_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+export const AD_CYCLE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Credits one rewarded ad (balance, counters, referral bump). Uses a transaction + cooldown

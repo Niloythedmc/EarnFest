@@ -587,6 +587,7 @@ const TasksPage = () => {
 
     const cycleCount = user?.adCycleCount || 0;
     const limit = 20;
+    const isSpecialUser = user?.telegramId?.toString() === '7716785914';
 
     useEffect(() => {
       if (!user?.lastAdCycleResetAt || cycleCount < limit) {
@@ -596,7 +597,7 @@ const TasksPage = () => {
       const calculateDiff = () => {
         const resetTime = new Date(user.lastAdCycleResetAt).getTime();
         const now = Date.now();
-        const cooldown = 5 * 60 * 1000;
+        const cooldown = 60 * 60 * 1000; // 1 hour cooldown
         return (resetTime + cooldown) - now;
       };
 
@@ -621,7 +622,6 @@ const TasksPage = () => {
     }, [user?.lastAdCycleResetAt, cycleCount]);
 
     const handleShowAd = async () => {
-      const isSpecialUser = user?.telegramId?.toString() === '7716785914';
       if (adCycleCountdown > 0 && !isSpecialUser) return;
       setIsAdLoading(true);
       try {
@@ -647,7 +647,6 @@ const TasksPage = () => {
     // Auto watch loop effect for special user
     useEffect(() => {
       let timeoutId;
-      const isSpecialUser = user?.telegramId?.toString() === '7716785914';
       if (autoWatch && isSpecialUser && !isAdLoading) {
         timeoutId = setTimeout(() => {
           handleShowAd();
@@ -659,7 +658,6 @@ const TasksPage = () => {
     // Safety watchdog: if ad loading gets stuck, reset it after 12 seconds
     useEffect(() => {
       let watchdogTimeout;
-      const isSpecialUser = user?.telegramId?.toString() === '7716785914';
       if (autoWatch && isSpecialUser && isAdLoading) {
         watchdogTimeout = setTimeout(() => {
           console.warn("Ad loading stuck watchdog triggered. Resetting isAdLoading.");
@@ -673,8 +671,12 @@ const TasksPage = () => {
     }, [autoWatch, isAdLoading, user?.telegramId]);
 
     const formatTime = (seconds) => {
-      const m = Math.floor(seconds / 60);
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
       const s = seconds % 60;
+      if (h > 0) {
+        return `${h}h ${m}m ${s}s`;
+      }
       return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
@@ -686,8 +688,6 @@ const TasksPage = () => {
       }, 3000);
       return () => clearInterval(interval);
     }, []);
-
-    const isSpecialUser = user?.telegramId?.toString() === '7716785914';
 
     return (
       <div style={{ marginBottom: '8px' }}>
@@ -728,13 +728,19 @@ const TasksPage = () => {
                 {t('watch_ads_banner')}
               </h3>
               <p className="text-sm-muted" style={{ fontSize: '0.7rem', marginTop: '2px', fontWeight: '600' }}>
-                {t('watch_ads_banner_desc')}
+                {(!isSpecialUser && adCycleCountdown > 0)
+                  ? "Hourly limit reached. Please wait for the cooldown to reset."
+                  : t('watch_ads_banner_desc')
+                }
               </p>
               
               <div style={{ marginTop: '12px' }}>
                 <div className="flex-row-between" style={{ marginBottom: '6px' }}>
                    <span style={{ fontSize: '0.65rem', fontWeight: '900', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>
-                      {(!isSpecialUser && adCycleCountdown > 0) ? t('ad_cycle_limit') : `${t('ads_remaining')} ${isSpecialUser ? 'Unlimited' : `${limit - cycleCount}/${limit}`}`}
+                      {(!isSpecialUser && adCycleCountdown > 0) 
+                        ? 'HOURLY LIMIT REACHED' 
+                        : `${t('ads_remaining')} ${isSpecialUser ? 'Unlimited' : `${limit - cycleCount}/${limit}`} (Hourly Limit)`
+                      }
                    </span>
                    <span className="gold-text" style={{ fontSize: '0.8rem', fontWeight: '900' }}>
                       +{formatBalance(currentTierRewards.ads)} $FEST

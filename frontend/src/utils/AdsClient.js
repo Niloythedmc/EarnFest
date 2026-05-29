@@ -14,7 +14,7 @@ const INTERSTITIAL_BLOCK_IDS = [
 ];
 
 const RICHADS_PUB_ID = '1011428';
-const RICHADS_APP_ID = '7391';
+const RICHADS_APP_ID = '7569';
 
 /** Last time we counted "user saw an ad" for inactivity-based interstitial logic. */
 let lastAdViewTime = Date.now();
@@ -121,6 +121,23 @@ async function showRichAdsPush() {
   }
 }
 
+/**
+ * Helper to check and record interstitial views with an hourly limit of 20.
+ */
+const checkAndRecordInterstitial = () => {
+  const now = Date.now();
+  let interstitialViews = JSON.parse(localStorage.getItem('interstitial_views') || '[]');
+  interstitialViews = interstitialViews.filter(timestamp => now - timestamp < 3600000);
+  
+  if (interstitialViews.length >= 20) {
+    return { allowed: false, views: interstitialViews };
+  }
+  
+  interstitialViews.push(now);
+  localStorage.setItem('interstitial_views', JSON.stringify(interstitialViews));
+  return { allowed: true, views: interstitialViews };
+};
+
 export const AdsClient = {
   /**
    * Reward ad: bumps activity timers and cancels pending interstitial scheduling immediately.
@@ -152,8 +169,28 @@ export const AdsClient = {
           const result = await AdController.show();
           lastAdViewTime = Date.now();
           // ONLY call onReward if ad was actually finished
-          if (onReward && result?.done) {
-            await Promise.resolve(onReward(result));
+          if (result?.done) {
+            // Immediately show Monetag ad (rewarded interstitial or popup randomly)
+            if (window.show_11071748) {
+              const usePop = Math.random() < 0.5;
+              try {
+                if (usePop) {
+                  console.log('[AdsClient] Showing Monetag Rewarded Popup for user:', tgId);
+                  await window.show_11071748({ type: 'pop', ymid: tgId });
+                } else {
+                  console.log('[AdsClient] Showing Monetag Rewarded Interstitial for user:', tgId);
+                  await window.show_11071748({ type: 'end', ymid: tgId });
+                }
+              } catch (monetagErr) {
+                console.warn('[AdsClient] Monetag ad failed or was dismissed:', monetagErr);
+              }
+            } else {
+              console.warn('[AdsClient] Monetag SDK not loaded, cannot show second ad.');
+            }
+
+            if (onReward) {
+              await Promise.resolve(onReward(result));
+            }
           }
           return result;
         } catch (err) {
@@ -169,13 +206,100 @@ export const AdsClient = {
   },
 
   showInterstitial: async () => {
-    // No-op - Interstitials disabled
+    try {
+      const now = Date.now();
+      const timeSinceLastAd = now - lastAdViewTime;
+      if (timeSinceLastAd < 60000) { // 60s cooldown
+        console.log(`[AdsClient] Interstitial rate limited. Only ${Math.round(timeSinceLastAd/1000)}s since last ad.`);
+        return;
+      }
+
+      if (rewardAdInProgress || interstitialInProgress) {
+        return;
+      }
+
+      const check = checkAndRecordInterstitial();
+      if (!check.allowed) {
+        console.log("[AdsClient] Interstitial skipped: hourly limit of 20 reached");
+        return;
+      }
+
+      interstitialInProgress = true;
+      lastAdViewTime = now;
+
+      console.log(`[AdsClient] Showing RichAds interstitial. Count in last hour: ${check.views.length}`);
+
+      const res = await showRichAdsInterstitial();
+      interstitialInProgress = false;
+      return res;
+    } catch (e) {
+      console.error("[AdsClient] showInterstitial error:", e);
+      interstitialInProgress = false;
+    }
   },
 
   /**
-   * Inactivity watcher: triggers interstitials after idle periods.
+   * Inactivity watcher: triggers Monetag in-app interstitial after idle periods.
    */
   startInactivityWatcher: () => {
-    // No-op - Interstitials disabled
-  },
+    try {
+      const now = Date.now();
+      let interstitialViews = JSON.parse(localStorage.getItem('interstitial_views') || '[]');
+      interstitialViews = interstitialViews.filter(timestamp => now - timestamp < 3600000);
+      
+      if (interstitialViews.length >= 20) {
+        console.log("[AdsClient] Monetag inApp skipped: hourly interstitial limit of 20 reached");
+        return;
+      }
+
+      if (window.show_11071748) {
+        window.show_11071748({
+          type: 'inApp',
+          inAppSettings: {
+            frequency: 2,
+            capping: 0.1,
+            interval: 30,
+            timeout: 5,
+            everyPage: false
+          }
+        });
+        const check = checkAndRecordInterstitial();
+        console.log("[AdsClient] Monetag inApp initialized. Interstitial count in last hour:", check.views.length);
+      } else {
+        const checkAndRun = setInterval(() => {
+          if (window.show_11071748) {
+            try {
+              let currentViews = JSON.parse(localStorage.getItem('interstitial_views') || '[]');
+              currentViews = currentViews.filter(timestamp => Date.now() - timestamp < 3600000);
+              if (currentViews.length >= 20) {
+                console.log("[AdsClient] Monetag inApp skipped: hourly interstitial limit of 20 reached (deferred)");
+                clearInterval(checkAndRun);
+                return;
+              }
+
+              window.show_11071748({
+                type: 'inApp',
+                inAppSettings: {
+                  frequency: 2,
+                  capping: 0.1,
+                  interval: 30,
+                  timeout: 5,
+                  everyPage: false
+                }
+              });
+              const check = checkAndRecordInterstitial();
+              console.log("[AdsClient] Monetag inApp initialized (deferred). Interstitial count in last hour:", check.views.length);
+              clearInterval(checkAndRun);
+            } catch (err) {
+              console.error("[AdsClient] Failed to initialize Monetag inApp:", err);
+              clearInterval(checkAndRun);
+            }
+          }
+        }, 1000);
+        setTimeout(() => clearInterval(checkAndRun), 10000);
+      }
+    } catch (e) {
+      console.error("[AdsClient] Error initializing inactivity watcher / inApp:", e);
+    }
+  }
 };

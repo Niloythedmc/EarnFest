@@ -436,6 +436,59 @@ router.get('/leaderboard', validateINITData, async (req, res) => {
 });
 
 /**
+ * Processes a callback matching logic for Adsgram + Monetag.
+ * Returns { triggerReward: boolean, error?: string, status?: number }
+ */
+async function recordAndCheckAdCallback(telegramId, type) {
+  const userRef = db.collection('users').doc(telegramId.toString());
+  
+  try {
+    const outcome = await db.runTransaction(async (tx) => {
+      const userDoc = await tx.get(userRef);
+      if (!userDoc.exists) {
+        return { error: 'User not found', status: 404 };
+      }
+
+      const userData = userDoc.data();
+      
+      const now = Date.now();
+      let lastAdsgram = userData.lastAdsgramCallbackAt || null;
+      let lastMonetag = userData.lastMonetagCallbackAt || null;
+
+      if (type === 'adsgram') {
+        lastAdsgram = now;
+      } else if (type === 'monetag') {
+        lastMonetag = now;
+      }
+
+      // Update timestamps
+      const updates = {
+        lastAdsgramCallbackAt: lastAdsgram,
+        lastMonetagCallbackAt: lastMonetag
+      };
+      tx.update(userRef, updates);
+
+      // Check if both are set and within 5 minutes (300,000 ms)
+      if (lastAdsgram && lastMonetag && Math.abs(lastAdsgram - lastMonetag) < 5 * 60 * 1000) {
+        // Reset timestamps to consume this pair
+        tx.update(userRef, {
+          lastAdsgramCallbackAt: null,
+          lastMonetagCallbackAt: null
+        });
+        return { triggerReward: true };
+      }
+
+      return { triggerReward: false };
+    });
+
+    return outcome;
+  } catch (error) {
+    console.error(`[recordAndCheckAdCallback] Error for user ${telegramId}:`, error);
+    return { error: 'Database transaction error', status: 500 };
+  }
+}
+
+/**
  * AdsGram Server-to-Server reward URL (GET). Must be called with a shared secret only you and
  * AdsGram know — set Reward URL in the partner panel like:
  *   https://YOUR_HOST/api/user/reward/adsgram?userid=[userId]&token=YOUR_SECRET
@@ -473,12 +526,19 @@ router.get('/reward/adsgram', async (req, res) => {
     const telegramId = req.query.userid;
     if (!telegramId) return res.status(400).send('Missing user id');
 
-    const result = await creditAdRewardForTelegramId(telegramId);
-    if (!result.ok) {
-      if (result.code === 'not_found') return res.status(404).send('User not found');
-      if (result.code === 'cooldown') return res.status(429).send('Too Many Requests');
-      if (result.code === 'membership_required') return res.status(403).send('MEMBERSHIP_REQUIRED');
-      return res.status(result.status || 500).send('Error');
+    const matchResult = await recordAndCheckAdCallback(telegramId, 'adsgram');
+    if (matchResult.error) {
+      return res.status(matchResult.status || 500).send(matchResult.error);
+    }
+
+    if (matchResult.triggerReward) {
+      const result = await creditAdRewardForTelegramId(telegramId);
+      if (!result.ok) {
+        if (result.code === 'not_found') return res.status(404).send('User not found');
+        if (result.code === 'cooldown') return res.status(429).send('Too Many Requests');
+        if (result.code === 'membership_required') return res.status(403).send('MEMBERSHIP_REQUIRED');
+        return res.status(result.status || 500).send('Error');
+      }
     }
 
     res.send('OK');
@@ -490,9 +550,7 @@ router.get('/reward/adsgram', async (req, res) => {
 
 /**
  * Monetag Server-to-Server reward URL.
- * Macros: ymid={ymid}&reward={reward_event_type}&zone={zone_id}&event={event_type}&price={estimated_price}
- * Example Callback URL:
- *   https://YOUR_HOST/api/user/reward/monetag?ymid=[YMID]&reward=[REWARD_EVENT_TYPE]&zone=[ZONE_ID]&event=[EVENT_TYPE]&token=YOUR_SECRET
+ * Macros: telegram_id={telegram_id}&reward_event_type={reward_event_type}&event_type={event_type}
  */
 router.get('/reward/monetag', async (req, res) => {
   try {
@@ -513,20 +571,27 @@ router.get('/reward/monetag', async (req, res) => {
       return res.status(403).send('Forbidden');
     }
 
-    const telegramId = req.query.ymid; // We pass user ID as ymid in frontend
-    if (!telegramId) return res.status(400).send('Missing ymid');
+    const telegramId = req.query.telegram_id || req.query.ymid || req.query.userid;
+    if (!telegramId) return res.status(400).send('Missing user id');
 
-    const isReward = req.query.reward === 'yes';
-    const eventType = req.query.event; // 'impression' or 'click'
+    const isReward = req.query.reward_event_type === 'yes' || req.query.reward === 'yes';
+    const eventType = req.query.event_type || req.query.event; // 'impression' or 'click'
 
-    // Only credit if it's a confirmed reward impression
+    // Only process if it's a confirmed reward impression
     if (isReward && eventType === 'impression') {
-      const result = await creditAdRewardForTelegramId(telegramId);
-      if (!result.ok) {
-        if (result.code === 'not_found') return res.status(404).send('User not found');
-        if (result.code === 'cooldown') return res.status(429).send('Too Many Requests');
-        if (result.code === 'membership_required') return res.status(403).send('MEMBERSHIP_REQUIRED');
-        return res.status(result.status || 500).send('Error');
+      const matchResult = await recordAndCheckAdCallback(telegramId, 'monetag');
+      if (matchResult.error) {
+        return res.status(matchResult.status || 500).send(matchResult.error);
+      }
+
+      if (matchResult.triggerReward) {
+        const result = await creditAdRewardForTelegramId(telegramId);
+        if (!result.ok) {
+          if (result.code === 'not_found') return res.status(404).send('User not found');
+          if (result.code === 'cooldown') return res.status(429).send('Too Many Requests');
+          if (result.code === 'membership_required') return res.status(403).send('MEMBERSHIP_REQUIRED');
+          return res.status(result.status || 500).send('Error');
+        }
       }
     }
 

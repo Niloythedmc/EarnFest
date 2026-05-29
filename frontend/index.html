@@ -11,6 +11,31 @@
     <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
     <!-- RichAds Telegram Banner SDK -->
     <script src="https://richinfo.co/richpartners/telegram/js/tg-ob.js"></script>
+    <!-- Monetag SDK -->
+    <script src='//libtl.com/sdk.js' data-zone='11071748' data-sdk='show_11071748'></script>
+    <!-- Adexium SDK & Auto-Mode Initialization with Hourly Limit Check -->
+    <script type="text/javascript" src="https://cdn.tgads.space/assets/js/adexium-widget.min.js"></script>
+    <script type="text/javascript">
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          const now = Date.now();
+          let interstitialViews = JSON.parse(localStorage.getItem('interstitial_views') || '[]');
+          interstitialViews = interstitialViews.filter(timestamp => now - timestamp < 3600000);
+          
+          if (interstitialViews.length < 20) {
+            const adexiumWidget = new AdexiumWidget({wid: '26ae87d5-b62e-4ff4-a518-01da857dffdd', adFormat: 'push-like'});
+            adexiumWidget.autoMode();
+            interstitialViews.push(now);
+            localStorage.setItem('interstitial_views', JSON.stringify(interstitialViews));
+            console.log("Adexium widget initialized. Interstitial count in last hour:", interstitialViews.length);
+          } else {
+            console.log("Adexium widget skipped: hourly interstitial limit of 20 reached");
+          }
+        } catch (e) {
+          console.error("Adexium initialization error:", e);
+        }
+      });
+    </script>
     <!-- Buffer Polyfill for TON SDK via CDN (extremely lightweight) -->
     <script src="https://bundle.run/buffer@6.0.3"></script>
     <script>
