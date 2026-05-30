@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useUser } from '../context/UserContext';
-import { Card, Button } from '../components/UI';
+import { Card, Button, Badge } from '../components/UI';
 import { toast } from 'sonner';
 import {
   Ticket,
@@ -10,6 +10,7 @@ import {
   Gem,
   Activity,
   Clock,
+  Trophy,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -35,6 +36,7 @@ const Home = () => {
   const [showPromoBox, setShowPromoBox] = useState(false);
   const [adminClickCount, setAdminClickCount] = useState(0);
   const [promoCode, setPromoCode] = useState('');
+  const [inlinePromoCode, setInlinePromoCode] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [promoMeta, setPromoMeta] = useState(null);
   const [activeOffer, setActiveOffer] = useState(null);
@@ -58,20 +60,21 @@ const Home = () => {
     }
   };
 
-  const handleRedeem = async () => {
-    if (!promoCode.trim()) return;
+  const handleRedeem = async (codeToRedeem, setCodeInput) => {
+    const cleanCode = codeToRedeem?.trim();
+    if (!cleanCode) return;
     setRedeemLoading(true);
     try {
       const tg = window.Telegram?.WebApp;
       const response = await axios.post(`${apiBase}/api/promocodes/check`, {
-        code: promoCode
+        code: cleanCode
       }, {
         headers: { 'x-telegram-init-data': tg?.initData }
       });
 
       if (response.data.success) {
         setPromoMeta(response.data.promo);
-        setPromoCode('');
+        setCodeInput('');
         toast.success('Promo code redeemed successfully!');
       }
     } catch (error) {
@@ -355,7 +358,7 @@ const Home = () => {
                   }}
                 />
                 <Button
-                  onClick={handleRedeem}
+                  onClick={() => handleRedeem(promoCode, setPromoCode)}
                   disabled={redeemLoading || !promoCode}
                   style={{ width: 'auto', padding: '0 20px', height: '35px', fontSize: '0.85rem', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}
                 >
@@ -451,6 +454,65 @@ const Home = () => {
             overflow: 'hidden'
           }}>
             <StreakMilestone compact />
+          </div>
+
+          {/* Inline Promo Code Card */}
+          <div style={{
+            background: 'var(--secondary-bg)',
+            borderRadius: '14px',
+            border: '1px solid var(--glass-border)',
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Ticket size={18} color="var(--primary-gold)" />
+              <span className="font-gaming" style={{ fontSize: '0.85rem', fontWeight: '900', color: 'var(--primary-gold)' }}>
+                Promo Code
+              </span>
+            </div>
+            
+            <p className="text-sm-muted" style={{ fontSize: '0.75rem', marginTop: '-4px', textAlign: 'left', lineHeight: '1.4' }}>
+              Got a promo code? Enter it below to claim your bonus reward instantly!
+            </p>
+
+            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+              <input
+                type="text"
+                placeholder="ENTER PROMO CODE"
+                value={inlinePromoCode}
+                onChange={(e) => setInlinePromoCode(e.target.value.toUpperCase())}
+                style={{
+                  background: 'rgba(0,0,0,0.2)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  color: 'white',
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: '0.85rem',
+                  fontWeight: '700',
+                  outline: 'none',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  fontFamily: 'var(--font-gaming)'
+                }}
+              />
+              <Button
+                onClick={() => handleRedeem(inlinePromoCode, setInlinePromoCode)}
+                disabled={redeemLoading || !inlinePromoCode}
+                style={{
+                  width: 'auto',
+                  padding: '0 20px',
+                  height: '38px',
+                  fontSize: '0.85rem',
+                  borderRadius: '8px',
+                  boxShadow: 'none',
+                  flexShrink: 0
+                }}
+              >
+                {redeemLoading ? '...' : 'Redeem'}
+              </Button>
+            </div>
           </div>
 
           {/* Recent Activities */}
