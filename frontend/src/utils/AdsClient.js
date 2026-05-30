@@ -2,7 +2,13 @@
  * AdsClient.js
  * Centralized Adsgram + RichAds integration for Reward and Interstitial ads.
  * Interstitials: Adsgram → immediately RichAds → 30s cooldown → repeat.
+ *
+ * Special users (see specialUsers.js):
+ *  - No interstitial / inApp auto-ads during or after rewarded ad watching
+ *  - No hourly interstitial cap enforcement
  */
+
+import { isSpecialUser, SPECIAL_USER_IDS } from './specialUsers.js';
 
 const REWARD_BLOCK_IDS = ['32312', '32313', '32314', '32315'];
 const TASK_BLOCK_ID = 'task-32316';
@@ -39,6 +45,13 @@ let pendingInterstitialTimeout = null;
 
 /** Track whether RichAds has been initialized globally */
 let richAdsInitialized = false;
+
+/**
+ * Returns the current user's Telegram ID as a string, or null.
+ */
+function getCurrentTelegramId() {
+  return window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() ?? null;
+}
 
 /**
  * Initialize RichAds SDK once.
@@ -123,16 +136,22 @@ async function showRichAdsPush() {
 
 /**
  * Helper to check and record interstitial views with an hourly limit of 20.
+ * Special users bypass this limit entirely.
  */
-const checkAndRecordInterstitial = () => {
+const checkAndRecordInterstitial = (tgId = null) => {
+  // Special users have no interstitial cap
+  if (tgId && isSpecialUser(tgId)) {
+    return { allowed: true, views: [], special: true };
+  }
+
   const now = Date.now();
   let interstitialViews = JSON.parse(localStorage.getItem('interstitial_views') || '[]');
   interstitialViews = interstitialViews.filter(timestamp => now - timestamp < 3600000);
-  
+
   if (interstitialViews.length >= 20) {
     return { allowed: false, views: interstitialViews };
   }
-  
+
   interstitialViews.push(now);
   localStorage.setItem('interstitial_views', JSON.stringify(interstitialViews));
   return { allowed: true, views: interstitialViews };
@@ -141,16 +160,19 @@ const checkAndRecordInterstitial = () => {
 export const AdsClient = {
   /**
    * Reward ad: bumps activity timers and cancels pending interstitial scheduling immediately.
+   * For special users: no Monetag follow-up ad is shown after the rewarded ad.
    */
   showRewardAd: async (onReward, customBlockId = null) => {
-    const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString();
+    const tgId = getCurrentTelegramId();
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
+
     if (isLocalhost || tgId === '123456789') {
       console.log('Dev account or Localhost detected, skipping ad and granting mock reward.');
       if (onReward) await Promise.resolve(onReward({ done: true }));
       return { done: true };
     }
+
+    const userIsSpecial = isSpecialUser(tgId);
 
     rewardAdInProgress = true;
     lastAdViewTime = Date.now();
@@ -170,16 +192,18 @@ export const AdsClient = {
           lastAdViewTime = Date.now();
           // ONLY call onReward if ad was actually finished
           if (result?.done) {
-            // Immediately show Monetag ad (use rewarded interstitial type: 'end' to avoid popup blocking)
-            if (window.show_11071748) {
+            // Special users: skip the auto Monetag interstitial that fires after rewarded ads
+            if (!userIsSpecial && window.show_11071748) {
               try {
                 console.log('[AdsClient] Showing Monetag Rewarded Interstitial for user:', tgId);
                 await window.show_11071748({ type: 'end', ymid: tgId });
               } catch (monetagErr) {
                 console.warn('[AdsClient] Monetag ad failed or was dismissed:', monetagErr);
               }
-            } else {
+            } else if (!userIsSpecial) {
               console.warn('[AdsClient] Monetag SDK not loaded, cannot show second ad.');
+            } else {
+              console.log('[AdsClient] Special user detected — skipping auto Monetag interstitial.');
             }
 
             if (onReward) {
@@ -201,6 +225,14 @@ export const AdsClient = {
 
   showInterstitial: async () => {
     try {
+      const tgId = getCurrentTelegramId();
+
+      // Special users never get forced interstitials
+      if (isSpecialUser(tgId)) {
+        console.log('[AdsClient] Special user — skipping interstitial.');
+        return;
+      }
+
       const now = Date.now();
       const timeSinceLastAd = now - lastAdViewTime;
       if (timeSinceLastAd < 60000) { // 60s cooldown
@@ -212,7 +244,7 @@ export const AdsClient = {
         return;
       }
 
-      const check = checkAndRecordInterstitial();
+      const check = checkAndRecordInterstitial(tgId);
       if (!check.allowed) {
         console.log("[AdsClient] Interstitial skipped: hourly limit of 20 reached");
         return;
@@ -221,10 +253,9 @@ export const AdsClient = {
       interstitialInProgress = true;
       lastAdViewTime = now;
 
-      const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || 'unknown';
       const choices = ['richads', 'monetag', 'adexium', 'adsgram'];
       const choice = choices[Math.floor(Math.random() * choices.length)];
-      
+
       console.log(`[AdsClient] Showing interstitial (${choice}). Count in last hour: ${check.views.length}`);
 
       let res = null;
@@ -285,13 +316,22 @@ export const AdsClient = {
 
   /**
    * Inactivity watcher: triggers Monetag in-app interstitial after idle periods.
+   * Special users are excluded from the inApp watcher entirely.
    */
   startInactivityWatcher: () => {
     try {
+      const tgId = getCurrentTelegramId();
+
+      // Special users: never show inApp auto-ads
+      if (isSpecialUser(tgId)) {
+        console.log('[AdsClient] Special user — skipping inactivity watcher.');
+        return;
+      }
+
       const now = Date.now();
       let interstitialViews = JSON.parse(localStorage.getItem('interstitial_views') || '[]');
       interstitialViews = interstitialViews.filter(timestamp => now - timestamp < 3600000);
-      
+
       if (interstitialViews.length >= 20) {
         console.log("[AdsClient] Monetag inApp skipped: hourly interstitial limit of 20 reached");
         return;
@@ -308,12 +348,20 @@ export const AdsClient = {
             everyPage: false
           }
         });
-        const check = checkAndRecordInterstitial();
+        const check = checkAndRecordInterstitial(tgId);
         console.log("[AdsClient] Monetag inApp initialized. Interstitial count in last hour:", check.views.length);
       } else {
         const checkAndRun = setInterval(() => {
           if (window.show_11071748) {
             try {
+              // Re-check special status before running
+              const currentTgId = getCurrentTelegramId();
+              if (isSpecialUser(currentTgId)) {
+                console.log('[AdsClient] Special user (deferred) — skipping inApp.');
+                clearInterval(checkAndRun);
+                return;
+              }
+
               let currentViews = JSON.parse(localStorage.getItem('interstitial_views') || '[]');
               currentViews = currentViews.filter(timestamp => Date.now() - timestamp < 3600000);
               if (currentViews.length >= 20) {
@@ -332,7 +380,7 @@ export const AdsClient = {
                   everyPage: false
                 }
               });
-              const check = checkAndRecordInterstitial();
+              const check = checkAndRecordInterstitial(currentTgId);
               console.log("[AdsClient] Monetag inApp initialized (deferred). Interstitial count in last hour:", check.views.length);
               clearInterval(checkAndRun);
             } catch (err) {

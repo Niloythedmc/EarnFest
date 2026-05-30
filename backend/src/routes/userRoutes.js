@@ -11,6 +11,7 @@ import { processReferralCommission, checkAndRewardActiveReferral } from '../util
 import { verifyInterstitialSession } from '../utils/antiAutoClickerManager.js';
 import { generateDeviceHash, checkMultiAccountOnDevice } from '../utils/deviceFingerprint.js';
 import { checkAdRewardMembership } from '../utils/telegramChats.js';
+import { isSpecialUser } from '../utils/specialUsers.js';
 import crypto from 'crypto';
 
 const router = express.Router();
@@ -379,18 +380,23 @@ router.post('/ad-watch/start', validateINITData, async (req, res) => {
       const userData = userDoc.data();
 
       // Check basic cooldown (only check if last ad reward exists)
-      const last = userData.lastAdRewardAt;
-      if (last != null) {
-        const lastMs =
-          typeof last === 'number'
-            ? last
-            : typeof last?.toMillis === 'function'
-              ? last.toMillis()
-              : new Date(last).getTime();
-        
-        const cooldown = Number(process.env.AD_REWARD_COOLDOWN_MS) || 28000;
-        if (now - lastMs < cooldown) {
-          throw new Error('Ad reward cooldown active. Please wait.');
+      // Special users are exempt from all cooldowns
+      const _isSpecialUser = isSpecialUser(sessionUserId);
+
+      if (!_isSpecialUser) {
+        const last = userData.lastAdRewardAt;
+        if (last != null) {
+          const lastMs =
+            typeof last === 'number'
+              ? last
+              : typeof last?.toMillis === 'function'
+                ? last.toMillis()
+                : new Date(last).getTime();
+
+          const cooldown = Number(process.env.AD_REWARD_COOLDOWN_MS) || 28000;
+          if (now - lastMs < cooldown) {
+            throw new Error('Ad reward cooldown active. Please wait.');
+          }
         }
       }
 
@@ -400,12 +406,13 @@ router.post('/ad-watch/start', validateINITData, async (req, res) => {
       const limit = 20;
       const cooldownMs = 60 * 60 * 1000; // 1 hour
 
-      // Skip limit check for special admin/dev account (same as TasksPage.jsx line 625)
-      const isSpecialUser = String(telegramId) === '7716785914';
-      if (cycleCount >= limit && !isSpecialUser) {
-        const timeSinceReset = now - cycleResetAt;
-        if (timeSinceReset < cooldownMs) {
-          throw new Error('Hourly ad limit reached. Please wait.');
+      // Skip ALL limit checks for special/admin accounts
+      if (!_isSpecialUser) {
+        if (cycleCount >= limit) {
+          const timeSinceReset = now - cycleResetAt;
+          if (timeSinceReset < cooldownMs) {
+            throw new Error('Hourly ad limit reached. Please wait.');
+          }
         }
       }
 

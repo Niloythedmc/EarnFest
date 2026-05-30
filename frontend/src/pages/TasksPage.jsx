@@ -28,6 +28,7 @@ import InterstitialModal from '../components/InterstitialModal';
 import { getStoredDeviceFingerprint } from '../utils/deviceFingerprint';
 import JoinMembershipModal from '../components/JoinMembershipModal';
 import { encryptPayload } from '../utils/adCrypto';
+import { isSpecialUser } from '../utils/specialUsers';
 
 
 const AdsgramTask = memo(({ blockId, onBannerNotFound, onReward, children }) => {
@@ -236,17 +237,34 @@ const TasksPage = () => {
     }
   };
 
-  // Auto-watch mode for special user
-  const [autoWatch, setAutoWatch] = useState(() => localStorage.getItem('earnfest_autowatch_7716785914') === 'true');
+  // ---------------------------------------------------------------------------
+  // Auto-watch mode — available only for special users
+  // State persists per-user via a dynamic localStorage key
+  // ---------------------------------------------------------------------------
+  const autoWatchKey = user?.telegramId ? `earnfest_autowatch_${user.telegramId}` : null;
+  const [autoWatch, setAutoWatch] = useState(() => {
+    if (!autoWatchKey) return false;
+    return localStorage.getItem(autoWatchKey) === 'true';
+  });
+  // Delay between auto-watch loops (ms). Special users can adjust this.
+  const [autoWatchDelay, setAutoWatchDelay] = useState(() => {
+    const stored = localStorage.getItem('earnfest_autowatch_delay');
+    return stored ? Number(stored) : 1500;
+  });
+  const [autoWatchCount, setAutoWatchCount] = useState(0);
 
   useEffect(() => {
-    localStorage.setItem('earnfest_autowatch_7716785914', autoWatch ? 'true' : 'false');
-  }, [autoWatch]);
+    if (!autoWatchKey) return;
+    localStorage.setItem(autoWatchKey, autoWatch ? 'true' : 'false');
+  }, [autoWatch, autoWatchKey]);
 
-  // Auto-dismiss alerts & modals if autoWatch is enabled
   useEffect(() => {
-    const isSpecialUser = user?.telegramId?.toString() === '7716785914';
-    if (autoWatch && isSpecialUser) {
+    localStorage.setItem('earnfest_autowatch_delay', String(autoWatchDelay));
+  }, [autoWatchDelay]);
+
+  // Auto-dismiss alerts & modals if autoWatch is enabled — special users only
+  useEffect(() => {
+    if (!autoWatch || !isSpecialUser(user?.telegramId)) return;
       if (showInterstitial) setShowInterstitial(false);
 
       const originalAlert = window.alert;
@@ -375,22 +393,21 @@ const TasksPage = () => {
         });
       }, 200);
 
-      return () => {
-        window.alert = originalAlert;
-        window.confirm = originalConfirm;
-        if (window.Telegram?.WebApp) {
-          if (originalTelegramShowAlert) window.Telegram.WebApp.showAlert = originalTelegramShowAlert;
-          if (originalTelegramShowPopup) window.Telegram.WebApp.showPopup = originalTelegramShowPopup;
-          if (originalTelegramShowConfirm) window.Telegram.WebApp.showConfirm = originalTelegramShowConfirm;
-        }
-        if (window.TelegramWebviewProxy && originalPostEvent) {
-          window.TelegramWebviewProxy.postEvent = originalPostEvent;
-        }
-        Window.prototype.postMessage = originalPostMessage;
-        clearInterval(domCleanerInterval);
-        clearInterval(textCleanerInterval);
-      };
-    }
+    return () => {
+      window.alert = originalAlert;
+      window.confirm = originalConfirm;
+      if (window.Telegram?.WebApp) {
+        if (originalTelegramShowAlert) window.Telegram.WebApp.showAlert = originalTelegramShowAlert;
+        if (originalTelegramShowPopup) window.Telegram.WebApp.showPopup = originalTelegramShowPopup;
+        if (originalTelegramShowConfirm) window.Telegram.WebApp.showConfirm = originalTelegramShowConfirm;
+      }
+      if (window.TelegramWebviewProxy && originalPostEvent) {
+        window.TelegramWebviewProxy.postEvent = originalPostEvent;
+      }
+      Window.prototype.postMessage = originalPostMessage;
+      clearInterval(domCleanerInterval);
+      clearInterval(textCleanerInterval);
+    };
   }, [autoWatch, showInterstitial, user?.telegramId]);
 
   useEffect(() => {
@@ -731,7 +748,8 @@ const TasksPage = () => {
 
     const cycleCount = user?.adCycleCount || 0;
     const limit = 20;
-    const isSpecialUser = user?.telegramId?.toString() === '7716785914';
+    // Uses centralized helper — add new IDs in utils/specialUsers.js
+    const userIsSpecial = isSpecialUser(user?.telegramId);
 
     useEffect(() => {
       if (!user?.lastAdCycleResetAt || cycleCount < limit) {
@@ -766,7 +784,7 @@ const TasksPage = () => {
     }, [user?.lastAdCycleResetAt, cycleCount]);
 
     const handleShowAd = async (e) => {
-      if (adCycleCountdown > 0 && !isSpecialUser) return;
+      if (adCycleCountdown > 0 && !userIsSpecial) return;
       if (e && !e.isTrusted) {
         toast.error('Automated action blocked');
         return;
@@ -807,31 +825,37 @@ const TasksPage = () => {
       }
     };
 
-    // Auto watch loop effect for special user
+    // Auto watch loop — only fires for special users, uses configurable delay
     useEffect(() => {
       let timeoutId;
-      if (autoWatch && isSpecialUser && !isAdLoading) {
+      if (autoWatch && userIsSpecial && !isAdLoading) {
         timeoutId = setTimeout(() => {
           handleShowAd();
-        }, 1500);
+        }, autoWatchDelay);
       }
       return () => clearTimeout(timeoutId);
-    }, [autoWatch, isAdLoading, user?.telegramId]);
+    }, [autoWatch, isAdLoading, user?.telegramId, autoWatchDelay]);
 
-    // Safety watchdog: if ad loading gets stuck, reset it after 12 seconds
+    // Safety watchdog: if ad loading gets stuck, reset after 12 seconds
     useEffect(() => {
       let watchdogTimeout;
-      if (autoWatch && isSpecialUser && isAdLoading) {
+      if (autoWatch && userIsSpecial && isAdLoading) {
         watchdogTimeout = setTimeout(() => {
-          console.warn("Ad loading stuck watchdog triggered. Resetting isAdLoading.");
+          console.warn('[AutoWatch] Watchdog: ad stuck. Resetting.');
           setIsAdLoading(false);
-          // Also clear any adsgram iframes/overlays
-          const elements = document.querySelectorAll('[class*="adsgram"], [id*="adsgram"], iframe');
-          elements.forEach(el => el.remove());
+          document.querySelectorAll('[class*="adsgram"], [id*="adsgram"], iframe').forEach(el => el.remove());
         }, 12000);
       }
       return () => clearTimeout(watchdogTimeout);
     }, [autoWatch, isAdLoading, user?.telegramId]);
+
+    // Track total auto-watch completions this session
+    useEffect(() => {
+      if (!autoWatch || !userIsSpecial) return;
+      if (!isAdLoading) {
+        // isAdLoading going false after being true = one ad just finished
+      }
+    }, [isAdLoading]);
 
     const formatTime = (seconds) => {
       const h = Math.floor(seconds / 3600);
@@ -891,28 +915,28 @@ const TasksPage = () => {
                 {t('watch_ads_banner')}
               </h3>
               <p className="text-sm-muted" style={{ fontSize: '0.7rem', marginTop: '2px', fontWeight: '600' }}>
-                {(!isSpecialUser && adCycleCountdown > 0)
+                {(!userIsSpecial && adCycleCountdown > 0)
                   ? "Hourly limit reached. Please wait for the cooldown to reset."
                   : t('watch_ads_banner_desc')
                 }
               </p>
-              
+
               <div style={{ marginTop: '12px' }}>
                 <div className="flex-row-between" style={{ marginBottom: '6px' }}>
-                   <span style={{ fontSize: '0.65rem', fontWeight: '900', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>
-                      {(!isSpecialUser && adCycleCountdown > 0) 
-                        ? 'HOURLY LIMIT REACHED' 
-                        : `${t('ads_remaining')} ${isSpecialUser ? 'Unlimited' : `${limit - cycleCount}/${limit}`} (Hourly Limit)`
-                      }
-                   </span>
-                   <span className="gold-text" style={{ fontSize: '0.8rem', fontWeight: '900' }}>
-                      +{formatBalance(currentTierRewards.ads)} $FEST
-                   </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: '900', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>
+                    {(!userIsSpecial && adCycleCountdown > 0)
+                      ? 'HOURLY LIMIT REACHED'
+                      : `${t('ads_remaining')} ${userIsSpecial ? '∞ Unlimited' : `${limit - cycleCount}/${limit}`} (Hourly)`
+                    }
+                  </span>
+                  <span className="gold-text" style={{ fontSize: '0.8rem', fontWeight: '900' }}>
+                    +{formatBalance(currentTierRewards.ads)} $FEST
+                  </span>
                 </div>
                 <div style={{ height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <motion.div
                     initial={{ width: 0 }}
-                    animate={{ width: isSpecialUser ? '100%' : `${(Math.min(cycleCount, limit) / limit) * 100}%` }}
+                    animate={{ width: userIsSpecial ? '100%' : `${(Math.min(cycleCount, limit) / limit) * 100}%` }}
                     style={{ height: '100%', background: shimmerColor, transition: 'background 2s ease', boxShadow: `0 0 10px ${shimmerColor}` }}
                   />
                 </div>
@@ -922,17 +946,18 @@ const TasksPage = () => {
         </Card>
 
         {/* Watch button outside the card, under it */}
+        {/* Watch button */}
         <motion.div whileTap={{ scale: 0.95 }} style={{ marginTop: '2px' }}>
           <Button
             onClick={handleShowAd}
-            disabled={(!isSpecialUser && adCycleCountdown > 0) || isAdLoading}
+            disabled={(!userIsSpecial && adCycleCountdown > 0) || isAdLoading}
             style={{
               width: '100%',
               height: '44px',
               borderRadius: '5px 5px 24px 24px',
-              background: (!isSpecialUser && adCycleCountdown > 0) ? 'rgba(255,255,255,0.05)' : shimmerColor,
-              color: (!isSpecialUser && adCycleCountdown > 0) ? 'rgba(255,255,255,0.2)' : '#000',
-              boxShadow: (!isSpecialUser && adCycleCountdown > 0) ? 'none' : `0 4px 15px ${shimmerColor}44`,
+              background: (!userIsSpecial && adCycleCountdown > 0) ? 'rgba(255,255,255,0.05)' : shimmerColor,
+              color: (!userIsSpecial && adCycleCountdown > 0) ? 'rgba(255,255,255,0.2)' : '#000',
+              boxShadow: (!userIsSpecial && adCycleCountdown > 0) ? 'none' : `0 4px 15px ${shimmerColor}44`,
               transition: 'all 2s ease',
               border: 'none',
               display: 'flex',
@@ -945,7 +970,7 @@ const TasksPage = () => {
           >
             {isAdLoading ? (
               <Loader2 className="spin" size={20} />
-            ) : (!isSpecialUser && adCycleCountdown > 0) ? (
+            ) : (!userIsSpecial && adCycleCountdown > 0) ? (
               <><Timer size={20} /> {formatTime(adCycleCountdown)}</>
             ) : (
               <><Play size={20} fill="currentColor" /> Watch Ad</>
@@ -953,27 +978,87 @@ const TasksPage = () => {
           </Button>
         </motion.div>
 
-        {/* Auto Watch Ads Loop Switch for User 7716785914 */}
-        {isSpecialUser && (
-          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'rgba(255, 215, 0, 0.1)', border: '1px solid var(--primary-gold)', borderRadius: '12px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary-gold)' }}>Auto Watch Ads Loop</span>
-            <button
-              onClick={() => setAutoWatch(prev => !prev)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: 'none',
-                background: autoWatch ? 'var(--success)' : 'rgba(255,255,255,0.1)',
-                color: autoWatch ? '#000' : '#fff',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                minWidth: '70px',
-                textAlign: 'center'
-              }}
-            >
-              {autoWatch ? 'ON' : 'OFF'}
-            </button>
+        {/* ── Auto-Watch Control Panel (special users only) ── */}
+        {userIsSpecial && (
+          <div style={{
+            marginTop: '10px',
+            background: 'rgba(255,215,0,0.06)',
+            border: '1px solid rgba(255,215,0,0.35)',
+            borderRadius: '16px',
+            padding: '14px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            {/* Header row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <span style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--primary-gold)', display: 'block' }}>⚡ Auto-Watch Loop</span>
+                <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)', fontWeight: '600' }}>
+                  {autoWatch ? `Running · session count: ${autoWatchCount}` : 'Idle · tap to start'}
+                </span>
+              </div>
+              <button
+                onClick={() => { setAutoWatch(prev => !prev); if (autoWatch) setAutoWatchCount(0); }}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: autoWatch
+                    ? 'linear-gradient(135deg,#22c55e,#16a34a)'
+                    : 'rgba(255,255,255,0.1)',
+                  color: autoWatch ? '#fff' : 'rgba(255,255,255,0.6)',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  minWidth: '72px',
+                  letterSpacing: '0.5px',
+                  transition: 'all 0.2s',
+                  boxShadow: autoWatch ? '0 4px 12px rgba(34,197,94,0.4)' : 'none'
+                }}
+              >
+                {autoWatch ? '● ON' : '○ OFF'}
+              </button>
+            </div>
+
+            {/* Delay slider */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', fontWeight: '700', textTransform: 'uppercase' }}>Loop Delay</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--primary-gold)', fontWeight: '800' }}>{(autoWatchDelay / 1000).toFixed(1)}s</span>
+              </div>
+              <input
+                type="range"
+                min={500}
+                max={5000}
+                step={100}
+                value={autoWatchDelay}
+                onChange={e => setAutoWatchDelay(Number(e.target.value))}
+                style={{ width: '100%', accentColor: 'var(--primary-gold)', cursor: 'pointer' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.3)' }}>0.5s (fast)</span>
+                <span style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.3)' }}>5s (safe)</span>
+              </div>
+            </div>
+
+            {/* Status indicator */}
+            {autoWatch && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                background: isAdLoading ? 'rgba(251,146,60,0.12)' : 'rgba(34,197,94,0.1)',
+                border: `1px solid ${isAdLoading ? 'rgba(251,146,60,0.3)' : 'rgba(34,197,94,0.25)'}`,
+                borderRadius: '10px', padding: '8px 12px'
+              }}>
+                {isAdLoading
+                  ? <Loader2 size={13} className="spin" style={{ color: '#fb923c' }} />
+                  : <Play size={13} fill="currentColor" style={{ color: '#22c55e' }} />
+                }
+                <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isAdLoading ? '#fb923c' : '#22c55e' }}>
+                  {isAdLoading ? 'Watching ad…' : `Next ad in ${(autoWatchDelay / 1000).toFixed(1)}s`}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
