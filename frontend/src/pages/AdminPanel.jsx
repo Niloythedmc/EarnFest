@@ -68,6 +68,8 @@ const AdminPanel = () => {
   const [broadcastProgress, setBroadcastProgress] = useState(null);
   const [gameAnalytics, setGameAnalytics] = useState(null);
   const [gameAnalyticsLoading, setGameAnalyticsLoading] = useState(false);
+  const [liveUsers, setLiveUsers] = useState([]);
+  const [liveUsersLoading, setLiveUsersLoading] = useState(false);
 
   // Ban Modal States
   const [showBanModal, setShowBanModal] = useState(false);
@@ -215,6 +217,19 @@ const AdminPanel = () => {
       setGameAnalytics(res.data.games);
     } catch { console.error('Game analytics fetch error'); }
     finally { setGameAnalyticsLoading(false); }
+  };
+
+  const fetchLiveActivity = async () => {
+    setLiveUsersLoading(true);
+    try {
+      const res = await axios.get(`${apiBase}/api/admin/live-activity`, { headers });
+      setLiveUsers(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      console.error('Failed to fetch live activity:', e);
+      setLiveUsers([]);
+    } finally {
+      setLiveUsersLoading(false);
+    }
   };
 
 
@@ -457,8 +472,15 @@ const AdminPanel = () => {
 
     if (activeTab === 'stats') {
       fetchGameAnalytics();
+      fetchLiveActivity();
     }
   }, [activeTab, botMsgType, leaderboardType]);
+
+  useEffect(() => {
+    if (activeTab !== 'stats') return;
+    const interval = setInterval(fetchLiveActivity, 10000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Bot message handlers
@@ -1162,6 +1184,65 @@ const AdminPanel = () => {
             ))}
           </div>
 
+          {/* Live Players & Actions */}
+          <Card style={{ padding: '16px' }}>
+            <div className="flex-row-between" style={{ marginBottom: '12px' }}>
+              <div className="flex-row" style={{ gap: '8px' }}>
+                <motion.div
+                  animate={{ scale: [1, 1.3, 1] }}
+                  transition={{ repeat: Infinity, duration: 1.5 }}
+                  style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00c896', boxShadow: '0 0 8px #00c896' }}
+                />
+                <p style={{ fontWeight: '800', fontSize: '0.8rem', opacity: 0.7 }}>LIVE PLAYERS ONLINE</p>
+              </div>
+              <Badge variant="tint" style={{ color: '#00c896', borderColor: 'rgba(0, 200, 150, 0.2)', fontSize: '0.7rem' }}>
+                {liveUsers.length} Active
+              </Badge>
+            </div>
+            {liveUsersLoading && liveUsers.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} variant="card" height="40px" />
+                ))}
+              </div>
+            ) : liveUsers.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                {liveUsers.map((user) => {
+                  const minutesAgo = Math.floor((Date.now() - user.timestamp) / 1000 / 60);
+                  const timeText = minutesAgo === 0 ? 'Just now' : `${minutesAgo}m ago`;
+                  return (
+                    <div
+                      key={user.userId}
+                      className="flex-row-between"
+                      style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px solid rgba(255,255,255,0.04)',
+                        borderRadius: '12px',
+                        fontSize: '0.75rem'
+                      }}
+                    >
+                      <div className="flex-row" style={{ gap: '8px' }}>
+                        <div style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{user.name}</div>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.4 }}>({user.userId})</div>
+                      </div>
+                      <div className="flex-row" style={{ gap: '10px' }}>
+                        <Badge variant="outline" style={{ fontSize: '0.65rem', padding: '2px 8px', color: 'var(--primary-gold)', borderColor: 'rgba(245, 166, 35, 0.2)' }}>
+                          {user.action}
+                        </Badge>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.5 }}>{timeText}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{ textAlign: 'center', padding: '20px 0', fontSize: '0.75rem', opacity: 0.5 }}>
+                No active players in the last 5 minutes.
+              </p>
+            )}
+          </Card>
+
           {/* Game Analytics */}
           <Card style={{ padding: '16px' }}>
             <div className="flex-row-between" style={{ marginBottom: '12px' }}>
@@ -1181,11 +1262,13 @@ const AdminPanel = () => {
                 {Object.entries(gameAnalytics).map(([key, game]) => {
                   const icons = {
                     spin_wheel: <Coins size={16} />,
-                    slots: <Dices size={16} />
+                    slots: <Dices size={16} />,
+                    coinflip: <TrendingUp size={16} />
                   };
                   const colors = {
                     spin_wheel: '#f5a623',
-                    slots: '#b27cf7'
+                    slots: '#b27cf7',
+                    coinflip: '#00d4ff'
                   };
                   return (
                     <Card key={key} style={{ padding: '14px', background: 'rgba(255,255,255,0.015)' }}>

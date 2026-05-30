@@ -246,7 +246,7 @@ const SlotPage = () => {
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', margin: '0 0 18px' }}>
         {[
           { label: 'Spin', image: '/Wheel.png', path: '/spin' },
-          { label: 'Mines', image: '/Mine.png', path: '/mines' },
+          { label: 'Flip', image: '/CoinFlip.png', path: '/coinflip' },
           { label: 'PVP', image: '/Pvp.png', path: '/pvp' }
         ].map((item) => (
           <button

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { trackActivity } from '../utils/activityTracker.js';
 
 export const validateINITData = (req, res, next) => {
   const initData = req.headers['x-telegram-init-data'];
@@ -9,7 +10,26 @@ export const validateINITData = (req, res, next) => {
        return res.status(401).json({ error: 'Unauthorized: Missing Telegram data' });
     }
     // Fallback for dev testing
-    req.telegramUser = { id: '123456789', username: 'DevUser' };
+    req.telegramUser = { id: '123456789', username: 'DevUser', first_name: 'Dev', last_name: 'User' };
+    
+    // Track dev user activity
+    try {
+      let action = 'Online';
+      const path = req.originalUrl || '';
+      const method = req.method;
+      if (path.includes('/coinflip') && method === 'POST') action = 'Playing Coin Flip';
+      else if (path.includes('/slots') && method === 'POST') action = 'Playing Slots';
+      else if (path.includes('/wheel') && method === 'POST') action = 'Spinning Wheel';
+      else if (path.includes('/ad-watch/start') && method === 'POST') action = 'Watching Ad';
+      else if (path.includes('/tasks/claim') && method === 'POST') action = 'Claiming Task';
+      else if (path.includes('/sync')) action = 'Viewing Dashboard';
+      else if (path.includes('/leaderboard')) action = 'Checking Leaderboard';
+      else if (path.includes('/contests')) action = 'Browsing Contests';
+      else if (path.includes('/withdraw')) action = 'Processing Withdrawal';
+      
+      trackActivity(req.telegramUser, action);
+    } catch (e) {}
+
     return next(); // Allow in dev if missing
   }
 
@@ -43,6 +63,24 @@ export const validateINITData = (req, res, next) => {
     // Attach user data to request
     const userRaw = JSON.parse(urlParams.get('user'));
     req.telegramUser = userRaw;
+    
+    // Track activity
+    try {
+      let action = 'Online';
+      const path = req.originalUrl || '';
+      const method = req.method;
+      if (path.includes('/coinflip') && method === 'POST') action = 'Playing Coin Flip';
+      else if (path.includes('/slots') && method === 'POST') action = 'Playing Slots';
+      else if (path.includes('/wheel') && method === 'POST') action = 'Spinning Wheel';
+      else if (path.includes('/ad-watch/start') && method === 'POST') action = 'Watching Ad';
+      else if (path.includes('/tasks/claim') && method === 'POST') action = 'Claiming Task';
+      else if (path.includes('/sync')) action = 'Viewing Dashboard';
+      else if (path.includes('/leaderboard')) action = 'Checking Leaderboard';
+      else if (path.includes('/contests')) action = 'Browsing Contests';
+      else if (path.includes('/withdraw')) action = 'Processing Withdrawal';
+      
+      trackActivity(req.telegramUser, action);
+    } catch (e) {}
     
     next();
   } catch (error) {

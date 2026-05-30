@@ -35,7 +35,7 @@ const STEPS = [
   },
   {
     title: 'Play Games',
-    description: 'Try Spin Wheel, Mines, and Slots to win big prizes from the prize pool!',
+    description: 'Try Spin Wheel, Coin Flip, and Slots to win big prizes from the prize pool!',
     selector: '[data-tutorial="games"]',
     position: 'above',
   },

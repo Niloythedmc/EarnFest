@@ -218,7 +218,7 @@ const SpinWheel = () => {
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', margin: '18px 0' }}>
         {[
           { label: 'PVP', image: '/Pvp.png', path: '/pvp' },
-          { label: 'Mines', image: '/Mine.png', path: '/mines' },
+          { label: 'Flip', image: '/CoinFlip.png', path: '/coinflip' },
           { label: 'Slots', image: '/Slot.png', path: '/slots' }
         ].map((item) => (
           <button

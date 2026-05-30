@@ -6,6 +6,7 @@ import axios from 'axios';
 import FormData from 'form-data';
 import multer from 'multer';
 import { sendTelegramMessage, sendTelegramPhoto } from '../utils/bot.js';
+import { getLiveUsers } from '../utils/activityTracker.js';
 
 const router = express.Router();
 
@@ -377,14 +378,15 @@ router.get('/game-analytics', async (req, res) => {
     if (!doc.exists) return res.json({ games: {} });
 
     const data = doc.data();
-    const gamePlays = data.gamePlays || { spin_wheel: 0, slots: 0 };
+    const gamePlays = data.gamePlays || { spin_wheel: 0, slots: 0, coinflip: 0 };
     const gameActiveUsersRaw = data.gameActiveUsers || {};
     const todayKey = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
     // Build per-game analytics with total plays and active users today
     const GAME_LABELS = {
       spin_wheel: 'Lucky Spin',
-      slots: 'Slot Machine'
+      slots: 'Slot Machine',
+      coinflip: 'Coin Flip'
     };
 
     const games = {};
@@ -1184,6 +1186,16 @@ router.post('/users/:id/ban', async (req, res) => {
   } catch (error) {
     console.error('Ban error:', error);
     res.status(500).json({ error: 'Failed to update ban status' });
+  }
+});
+
+// Get live active users and their actions
+router.get('/live-activity', async (req, res) => {
+  try {
+    res.json(getLiveUsers());
+  } catch (error) {
+    console.error('Failed to get live activity:', error);
+    res.status(500).json({ error: 'Failed to fetch live activity' });
   }
 });
 

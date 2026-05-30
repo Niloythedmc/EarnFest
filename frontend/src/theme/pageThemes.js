@@ -80,10 +80,10 @@ const PAGE_BACKGROUNDS = {
     linear-gradient(180deg, #0f0606 0%, ${BASE_FADE} 55%, #060808 100%)
   `,
 
-  '/mines': `
-    radial-gradient(ellipse 100% 58% at 50% -10%, rgba(248, 113, 113, 0.12), transparent 54%),
+  '/coinflip': `
+    radial-gradient(ellipse 100% 58% at 50% -10%, rgba(0, 212, 255, 0.15), transparent 54%),
     radial-gradient(ellipse 58% 48% at 0% 100%, rgba(31, 31, 31, 0.4), transparent 52%),
-    linear-gradient(180deg, #1a1a1a 0%, ${BASE_FADE} 50%, #000000 100%)
+    linear-gradient(180deg, #090e1b 0%, ${BASE_FADE} 50%, #000000 100%)
   `,
 };
 
@@ -166,12 +166,12 @@ const PAGE_CONTENT = {
     accentGlow: 'rgba(252, 165, 165, 0.28)',
   },
 
-  '/mines': {
-    accent: '#ff4b2b',
-    accentBright: '#ff416c',
-    accentSoft: 'rgba(255, 75, 43, 0.14)',
-    accentBorder: 'rgba(255, 75, 43, 0.38)',
-    accentGlow: 'rgba(255, 75, 43, 0.3)',
+  '/coinflip': {
+    accent: '#00d4ff',
+    accentBright: '#39f3ff',
+    accentSoft: 'rgba(0, 212, 255, 0.14)',
+    accentBorder: 'rgba(0, 212, 255, 0.38)',
+    accentGlow: 'rgba(0, 212, 255, 0.3)',
   },
 };
 

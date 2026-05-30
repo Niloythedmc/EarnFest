@@ -1158,7 +1158,7 @@ const TasksPage = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
               {[
                 { label: 'Spin', image: '/Wheel.png', path: '/spin' },
-                { label: 'Mines', image: '/Mine.png', path: '/mines' },
+                { label: 'Flip', image: '/CoinFlip.png', path: '/coinflip' },
                 { label: 'Slots', image: '/Slot.png', path: '/slots' }
               ].map((item) => (
                 <button

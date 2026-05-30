@@ -173,7 +173,7 @@ const CoinFlip = () => {
         {[
           { label: 'Slots', image: '/Slot.png', path: '/slots' },
           { label: 'Spin', image: '/Wheel.png', path: '/spin' },
-          { label: 'Mines', image: '/Mine.png', path: '/mines' }
+          { label: 'PVP', image: '/Pvp.png', path: '/pvp' }
         ].map((item) => (
           <button
             key={item.path}
