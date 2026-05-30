@@ -27,6 +27,7 @@ import { formatBalance } from '../utils/formatters';
 import InterstitialModal from '../components/InterstitialModal';
 import { getStoredDeviceFingerprint } from '../utils/deviceFingerprint';
 import JoinMembershipModal from '../components/JoinMembershipModal';
+import { encryptPayload } from '../utils/adCrypto';
 
 
 const AdsgramTask = memo(({ blockId, onBannerNotFound, onReward, children }) => {
@@ -84,6 +85,99 @@ const TasksPage = () => {
   const [showInterstitial, setShowInterstitial] = useState(false);
   const [interstitialSessionId, setInterstitialSessionId] = useState(null);
   const [showJoinModal, setShowJoinModal] = useState(false);
+
+  const mouseTrailRef = useRef([]);
+
+  useEffect(() => {
+    const handleMove = (e) => {
+      let x = 0, y = 0;
+      if (e.touches && e.touches[0]) {
+        x = e.touches[0].clientX;
+        y = e.touches[0].clientY;
+      } else {
+        x = e.clientX;
+        y = e.clientY;
+      }
+      const trail = mouseTrailRef.current;
+      trail.push({ x: Math.round(x), y: Math.round(y), t: Date.now() });
+      if (trail.length > 15) {
+        trail.shift();
+      }
+    };
+
+    window.addEventListener('mousemove', handleMove, { passive: true });
+    window.addEventListener('touchmove', handleMove, { passive: true });
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('touchmove', handleMove);
+    };
+  }, []);
+
+  const getTelemetry = (event) => {
+    const now = Date.now();
+    const freshTrail = mouseTrailRef.current.filter(p => now - p.t < 4000);
+    
+    if (event) {
+      freshTrail.push({
+        x: Math.round(event.clientX || 0),
+        y: Math.round(event.clientY || 0),
+        t: now
+      });
+    }
+
+    return {
+      timestamp: now,
+      isTrusted: event ? event.isTrusted : false,
+      webdriver: !!navigator.webdriver,
+      mouseTrail: freshTrail.map(p => ({ x: p.x, y: p.y })),
+      randomSalt: Math.random()
+    };
+  };
+
+  const getTelegramSessionHash = () => {
+    const initData = window.Telegram?.WebApp?.initData;
+    if (!initData) return null;
+    const urlParams = new URLSearchParams(initData);
+    return urlParams.get('hash');
+  };
+
+  const handleTaskAdStart = async (e, task) => {
+    if (e && !e.isTrusted) {
+      toast.error('Automated action blocked');
+      return;
+    }
+    
+    setVerifying(task.id);
+    
+    try {
+      const telemetry = getTelemetry(e);
+      const hash = getTelegramSessionHash() || 'dev-mode-fallback-hash';
+      const payload = encryptPayload(telemetry, hash);
+
+      const headers = { 'Content-Type': 'application/json' };
+      const tgInit = window.Telegram?.WebApp?.initData;
+      if (tgInit) {
+        headers['x-telegram-init-data'] = tgInit;
+      }
+      
+      await axios.post(`${apiBase}/api/user/ad-watch/start`, {
+        telegramId: user?.telegramId,
+        payload
+      }, { headers });
+
+      await AdsClient.showRewardAd(async () => {
+        alert(t('task_verified') || "Ad completed! Your reward will be processed shortly.");
+        setTimeout(() => window.location.reload(), 2000);
+      }, task.adsgramBlockId || 'task-32316');
+      
+    } catch (err) {
+      console.error('Failed to start task ad:', err);
+      toast.error(err.response?.data?.error || 'Ad failed to load or session not allowed');
+    } finally {
+      setVerifying(null);
+    }
+  };
 
   // Auto-watch mode for special user
   const [autoWatch, setAutoWatch] = useState(() => localStorage.getItem('earnfest_autowatch_7716785914') === 'true');
@@ -434,43 +528,36 @@ const TasksPage = () => {
               position: 'relative'
             }}
           >
-            <AdsgramTask
-              blockId={task.adsgramBlockId || 'task-32316'}
-              onBannerNotFound={() => setAdTaskAvailable(false)}
-              onReward={() => {
-                alert(t('task_verified') || "Ad completed! Your reward will be processed shortly.");
-                setTimeout(() => window.location.reload(), 2000);
-              }}
-            >
-              <div className="flex-row-between" style={{ gap: '8px', width: '100%' }}>
-                <div className="flex-row" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
-                  <div className="flex-center" style={{
-                    width: '45px', height: '45px', borderRadius: '10px', background: 'var(--page-tint-highlight)', color: 'var(--primary-gold)', flexShrink: 0
-                  }}>
-                    <MonitorPlay size={22} />
-                  </div>
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
-                    <span style={{ fontWeight: '700', fontSize: '1rem', color: '#fff' }}>{task.title}</span>
-                    <span className="gold-text" style={{ fontSize: '0.75rem', fontWeight: '800' }}>+{formatBalance(task.reward)} $FEST</span>
-                  </div>
+            <div className="flex-row-between" style={{ gap: '8px', width: '100%', padding: '10px' }}>
+              <div className="flex-row" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
+                <div className="flex-center" style={{
+                  width: '45px', height: '45px', borderRadius: '10px', background: 'var(--page-tint-highlight)', color: 'var(--primary-gold)', flexShrink: 0
+                }}>
+                  <MonitorPlay size={22} />
                 </div>
-                <div className="flex-center">
-                   <div slot="button">
-                      <GameButton padding="4px 16px" borderRadius="30px" fontSize="1rem" fontWeight="bold" style={{ width: 'auto', height: '44px' }}>
-                        {t('start') || 'START'}
-                      </GameButton>
-                   </div>
-                   <div slot="claim">
-                      <GameButton padding="4px 16px" borderRadius="30px" fontSize="1rem" fontWeight="bold" style={{ width: 'auto', height: '44px', background: 'var(--success)' }}>
-                        {t('claim') || 'CLAIM'}
-                      </GameButton>
-                   </div>
-                   <div slot="done">
-                      <CheckCircle2 size={24} color="var(--success)" />
-                   </div>
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+                  <span style={{ fontWeight: '700', fontSize: '1rem', color: '#fff' }}>{task.title}</span>
+                  <span className="gold-text" style={{ fontSize: '0.75rem', fontWeight: '800' }}>+{formatBalance(task.reward)} $FEST</span>
                 </div>
               </div>
-            </AdsgramTask>
+              <div className="flex-center">
+                 {task.completed ? (
+                    <CheckCircle2 size={24} color="var(--success)" />
+                 ) : (
+                    <GameButton 
+                      padding="4px 16px" 
+                      borderRadius="30px" 
+                      fontSize="1rem" 
+                      fontWeight="bold" 
+                      style={{ width: 'auto', height: '44px' }}
+                      disabled={verifying === task.id}
+                      onClick={(e) => handleTaskAdStart(e, task)}
+                    >
+                      {verifying === task.id ? <Loader2 className="spin" size={16} /> : (t('start') || 'START')}
+                    </GameButton>
+                 )}
+              </div>
+            </div>
           </GameCard>
         </div>
       );
@@ -621,10 +708,29 @@ const TasksPage = () => {
       return () => clearInterval(interval);
     }, [user?.lastAdCycleResetAt, cycleCount]);
 
-    const handleShowAd = async () => {
+    const handleShowAd = async (e) => {
       if (adCycleCountdown > 0 && !isSpecialUser) return;
+      if (e && !e.isTrusted) {
+        toast.error('Automated action blocked');
+        return;
+      }
       setIsAdLoading(true);
       try {
+        const telemetry = getTelemetry(e);
+        const hash = getTelegramSessionHash() || 'dev-mode-fallback-hash';
+        const payload = encryptPayload(telemetry, hash);
+
+        const headers = { 'Content-Type': 'application/json' };
+        const tgInit = window.Telegram?.WebApp?.initData;
+        if (tgInit) {
+          headers['x-telegram-init-data'] = tgInit;
+        }
+
+        await axios.post(`${apiBase}/api/user/ad-watch/start`, {
+          telegramId: user?.telegramId,
+          payload
+        }, { headers });
+
         await AdsClient.showRewardAd(async () => {
           // Trigger a background refresh after 1.5 seconds to sync balance and check for interstitial
           setTimeout(async () => {
@@ -637,7 +743,7 @@ const TasksPage = () => {
         });
       } catch (err) {
         if (!autoWatch) {
-          toast.error('Ad failed to load');
+          toast.error(err.response?.data?.error || 'Ad failed to load or session not allowed');
         }
       } finally {
         setIsAdLoading(false);

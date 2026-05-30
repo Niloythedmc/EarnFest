@@ -6,6 +6,7 @@ import { SPIN_WHEEL_PRIZES, SPIN_WHEEL_CONFIG, verifyProbabilityConfig } from '.
 import { sendTelegramPhoto } from '../utils/bot.js';
 import { recordNewUser, recordActiveUser, incrementSpins, adjustTotalBalance, updateUserSearchIndex, incrementGamePlays, recordGameActiveUser } from '../utils/stats.js';
 import { creditAdRewardForTelegramId } from '../utils/adReward.js';
+import { decryptPayload } from '../utils/adCrypto.js';
 import { processReferralCommission, checkAndRewardActiveReferral } from '../utils/referralLogic.js';
 import { verifyInterstitialSession } from '../utils/antiAutoClickerManager.js';
 import { generateDeviceHash, checkMultiAccountOnDevice } from '../utils/deviceFingerprint.js';
@@ -310,6 +311,130 @@ router.post('/sync', validateINITData, async (req, res) => {
   }
 });
 
+// Start Ad Watch Handshake (Background Telemetry & Validation)
+router.post('/ad-watch/start', validateINITData, async (req, res) => {
+  try {
+    const { telegramId, payload } = req.body;
+    const sessionUserId = req.telegramUser?.id;
+
+    if (sessionUserId == null) {
+      return res.status(401).json({ error: 'Unauthorized: Telegram session required' });
+    }
+    if (String(sessionUserId) !== String(telegramId)) {
+      return res.status(403).json({ error: 'Forbidden: user mismatch' });
+    }
+
+    if (!payload) {
+      return res.status(400).json({ error: 'Missing security payload' });
+    }
+
+    // Extract Telegram session hash from header to decrypt payload
+    const initData = req.headers['x-telegram-init-data'];
+    let hash = 'dev-mode-fallback-hash';
+    if (initData) {
+      const urlParams = new URLSearchParams(initData);
+      hash = urlParams.get('hash') || 'dev-mode-fallback-hash';
+    } else if (process.env.NODE_ENV === 'production') {
+      return res.status(401).json({ error: 'Unauthorized: Missing session hash' });
+    }
+
+    let decrypted;
+    try {
+      decrypted = decryptPayload(payload, hash);
+    } catch (e) {
+      console.warn(`[AdSecurity] Decryption failed for user ${telegramId}`);
+      return res.status(400).json({ error: 'Invalid security signature' });
+    }
+
+    const { timestamp, isTrusted, mouseTrail, blockId, adContext, taskId } = decrypted;
+
+    // 1. Replay attack prevention (must be within 10 seconds of request creation)
+    const now = Date.now();
+    if (!timestamp || Math.abs(now - timestamp) > 10000) {
+      console.warn(`[AdSecurity] Replay attempt or timestamp mismatch for user ${telegramId}: diff=${now - timestamp}ms`);
+      return res.status(400).json({ error: 'Security token expired' });
+    }
+
+    // 2. Event trust check
+    if (isTrusted !== true) {
+      console.warn(`[AdSecurity] Programmatic trigger detected (isTrusted !== true) for user ${telegramId}`);
+      return res.status(400).json({ error: 'Automated clicks are not allowed' });
+    }
+
+    // 3. Mouse trail validation (ensure real device events)
+    if (!Array.isArray(mouseTrail) || mouseTrail.length === 0) {
+      console.warn(`[AdSecurity] No interaction trail found for user ${telegramId}`);
+      return res.status(400).json({ error: 'Telemetry verification failed' });
+    }
+
+    // Check if mouseTrail coordinates are completely static or fake
+    const firstPoint = mouseTrail[0];
+    const isStatic = mouseTrail.every(p => p.x === firstPoint.x && p.y === firstPoint.y);
+    if (isStatic && mouseTrail.length > 1) {
+      console.warn(`[AdSecurity] Static mouse/touch trail detected for user ${telegramId}`);
+      return res.status(400).json({ error: 'Automated gesture detected' });
+    }
+
+    const userRef = db.collection('users').doc(String(sessionUserId));
+
+    const result = await db.runTransaction(async (tx) => {
+      const userDoc = await tx.get(userRef);
+      if (!userDoc.exists) throw new Error('User not found');
+
+      const userData = userDoc.data();
+
+      // Check basic cooldown (only check if last ad reward exists)
+      const last = userData.lastAdRewardAt;
+      if (last != null) {
+        const lastMs =
+          typeof last === 'number'
+            ? last
+            : typeof last?.toMillis === 'function'
+              ? last.toMillis()
+              : new Date(last).getTime();
+        
+        const cooldown = Number(process.env.AD_REWARD_COOLDOWN_MS) || 28000;
+        if (now - lastMs < cooldown) {
+          throw new Error('Ad reward cooldown active. Please wait.');
+        }
+      }
+
+      // Check hourly cycle limit
+      const cycleCount = userData.adCycleCount || 0;
+      const cycleResetAt = userData.lastAdCycleResetAt || 0;
+      const limit = 20;
+      const cooldownMs = 60 * 60 * 1000; // 1 hour
+
+      // Skip limit check for special admin/dev account (same as TasksPage.jsx line 625)
+      const isSpecialUser = String(telegramId) === '7716785914';
+      if (cycleCount >= limit && !isSpecialUser) {
+        const timeSinceReset = now - cycleResetAt;
+        if (timeSinceReset < cooldownMs) {
+          throw new Error('Hourly ad limit reached. Please wait.');
+        }
+      }
+
+      tx.update(userRef, {
+        pendingAdWatch: {
+          startedAt: now,
+          blockId: blockId || 'reward',
+          adContext: adContext || 'reward',
+          taskId: taskId || null,
+          claimedBy: [],
+          status: 'started'
+        }
+      });
+
+      return { success: true };
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Ad Watch Start Error:', error);
+    res.status(400).json({ error: error.message || 'Failed to start ad session' });
+  }
+});
+
 // [SECURE] Update Balance / Reward (ad rewards share cooldown + logic with GET /reward/adsgram)
 router.post('/reward', validateINITData, async (req, res) => {
   try {
@@ -449,8 +574,43 @@ async function recordAndCheckAdCallback(telegramId, type) {
         return { error: 'User not found', status: 404 };
       }
 
+      const userData = userDoc.data();
+      const watch = userData.pendingAdWatch;
+
+      if (!watch || watch.status !== 'started') {
+        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: No pending watch found`);
+        return { error: 'Access denied: No active ad session initialized from the official client.', status: 403 };
+      }
+
       const now = Date.now();
-      const updates = {};
+      const elapsed = now - watch.startedAt;
+
+      // Real ads take time to play
+      if (elapsed < 4000) {
+        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Watched too quickly (${elapsed}ms)`);
+        return { error: 'Access denied: Ad completed too quickly. Automated watch suspected.', status: 400 };
+      }
+      if (elapsed > 300000) {
+        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Ad session expired`);
+        return { error: 'Access denied: Ad watch session expired.', status: 400 };
+      }
+
+      if (watch.adContext !== 'reward') {
+        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Context mismatch (expected reward, got ${watch.adContext})`);
+        return { error: 'Access denied: Ad context mismatch.', status: 400 };
+      }
+
+      const claimedBy = watch.claimedBy || [];
+      if (claimedBy.includes(type)) {
+        return { error: 'Duplicate callback received.', status: 400 };
+      }
+
+      const newClaimedBy = [...claimedBy, type];
+      
+      const updates = {
+        'pendingAdWatch.claimedBy': newClaimedBy
+      };
+      
       if (type === 'adsgram') {
         updates.lastAdsgramCallbackAt = now;
       } else if (type === 'monetag') {

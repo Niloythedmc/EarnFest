@@ -66,6 +66,42 @@ async function completeTask(telegramId, taskId) {
     const isAlreadyDone = (userData.taskHistory || []).some((t) => t.taskId === taskId);
     if (isAlreadyDone) return { ok: false, error: 'Task already completed', status: 400 };
 
+    if (taskId === 'task-32316') {
+      const watch = userData.pendingAdWatch;
+      if (!watch || watch.status !== 'started') {
+        console.warn(`[AdSecurity] Task callback denied for user ${telegramId}: No pending watch found`);
+        return { ok: false, error: 'Access denied: No active ad session initialized from the official client.', status: 403 };
+      }
+
+      const now = Date.now();
+      const elapsed = now - watch.startedAt;
+
+      // Real ads take time to play
+      if (elapsed < 4000) {
+        console.warn(`[AdSecurity] Task callback denied for user ${telegramId}: Watched too quickly (${elapsed}ms)`);
+        return { ok: false, error: 'Access denied: Ad completed too quickly. Automated watch suspected.', status: 400 };
+      }
+      if (elapsed > 300000) {
+        console.warn(`[AdSecurity] Task callback denied for user ${telegramId}: Ad session expired`);
+        return { ok: false, error: 'Access denied: Ad watch session expired.', status: 400 };
+      }
+
+      if (watch.adContext !== 'task' || watch.taskId !== taskId) {
+        console.warn(`[AdSecurity] Task callback denied for user ${telegramId}: Context or task mismatch`);
+        return { ok: false, error: 'Access denied: Ad context or Task ID mismatch.', status: 400 };
+      }
+
+      const claimedBy = watch.claimedBy || [];
+      if (claimedBy.includes('adsgram')) {
+        return { ok: false, error: 'Duplicate callback received.', status: 400 };
+      }
+
+      const newClaimedBy = [...claimedBy, 'adsgram'];
+      tx.update(userRef, {
+        'pendingAdWatch.claimedBy': newClaimedBy
+      });
+    }
+
     const taskDoc = await tx.get(taskRef);
     let finalReward = 0;
 
