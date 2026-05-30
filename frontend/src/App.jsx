@@ -26,6 +26,7 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const GamesPage = lazy(() => import('./pages/GamesPage'));
 const SlotPage = lazy(() => import('./pages/SlotPage'));
+const CoinFlip = lazy(() => import('./pages/CoinFlip'));
 const PromotePage = lazy(() => import('./pages/PromotePage'));
 const OnlyTaskPage = lazy(() => import('./pages/OnlyTaskPage'));
 const FeaturedTaskPage = lazy(() => import('./pages/FeaturedTaskPage'));
@@ -136,6 +137,7 @@ function AppShell() {
         case 'watch': navigate('/tasks'); break;
         case 'profile': navigate('/profile'); break;
         case 'slots': navigate('/slots'); break;
+        case 'coinflip': navigate('/coinflip'); break;
         case 'withdraw': navigate('/withdraw?tab=withdraw'); break;
         case 'deposit': navigate('/withdraw?tab=deposit'); break;
         default: break;
@@ -307,6 +309,7 @@ function AppShell() {
         <Route path="/games" element={<GamesPage />} />
         <Route path="/spin" element={<SpinWheel />} />
         <Route path="/slots" element={<SlotPage />} />
+        <Route path="/coinflip" element={<CoinFlip />} />
         <Route path="/refer" element={<ReferralPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/upgrade" element={<UpgradePage />} />

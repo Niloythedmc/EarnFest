@@ -28,6 +28,13 @@ const GamesPage = () => {
       path: '/slots',
       image: '/Slot.png'
     },
+    {
+      id: 'coinflip',
+      title: 'Coin Flip',
+      labelKey: 'coinflip',
+      path: '/coinflip',
+      image: '/CoinFlip.png'
+    },
   ];
 
   return (

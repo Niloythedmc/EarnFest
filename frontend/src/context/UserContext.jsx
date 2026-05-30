@@ -367,9 +367,38 @@ export const UserProvider = ({ children }) => {
     }
   };
 
+  const playCoinFlip = async (bet, choice) => {
+    const tg = window.Telegram?.WebApp;
+    if (!user) return { success: false, error: 'User not found' };
+
+    try {
+      const response = await axios.post(`${apiBase}/api/user/coinflip-game`, { bet, choice }, {
+        headers: { 'x-telegram-init-data': tg?.initData }
+      });
+      
+      if (response.data.success) {
+        setUser(prev => ({ 
+          ...prev, 
+          balance: response.data.newBalance
+        }));
+        return {
+          success: true,
+          payout: response.data.payout,
+          netGain: response.data.netGain,
+          flipResult: response.data.flipResult,
+          isWin: response.data.isWin,
+          newBalance: response.data.newBalance
+        };
+      }
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || 'Coin flip failed';
+      return { success: false, error: errorMsg };
+    }
+  };
+
   return (
     <UserContext.Provider value={{ 
-      user, setUser, loading, streakData, setStreakData, streakLoading, fetchStreak, claimStreakMilestone, continueStreak, writeAccessGranted, refreshUser, addReward, playSpin, playSpinGame, playSlotGame, trackSpinAdView
+      user, setUser, loading, streakData, setStreakData, streakLoading, fetchStreak, claimStreakMilestone, continueStreak, writeAccessGranted, refreshUser, addReward, playSpin, playSpinGame, playSlotGame, trackSpinAdView, playCoinFlip
     }}>
       {children}
     </UserContext.Provider>

@@ -597,9 +597,9 @@ async function recordAndCheckAdCallback(telegramId, type) {
         return { error: 'Access denied: Ad watch session expired.', status: 400 };
       }
 
-      const validContexts = ['reward', 'SpinWheel', 'SlotMachine'];
+      const validContexts = ['reward', 'SpinWheel', 'SlotMachine', 'CoinFlip'];
       if (!validContexts.includes(watch.adContext)) {
-        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Context mismatch (expected reward/SpinWheel/SlotMachine, got ${watch.adContext})`);
+        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Context mismatch (expected reward/SpinWheel/SlotMachine/CoinFlip, got ${watch.adContext})`);
         return { error: 'Access denied: Ad context mismatch.', status: 400 };
       }
 
@@ -765,6 +765,73 @@ async function creditSlotMachineExtraReward(telegramId) {
   }
 }
 
+async function creditCoinFlipExtraReward(telegramId) {
+  const userRef = db.collection('users').doc(telegramId.toString());
+  try {
+    const result = await db.runTransaction(async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists) return { ok: false, error: 'User not found', status: 404 };
+
+      const userData = userDoc.data();
+      
+      let lastCoinFlipAtMs = 0;
+      if (userData.lastCoinFlipAt) {
+        lastCoinFlipAtMs = typeof userData.lastCoinFlipAt === 'number'
+          ? userData.lastCoinFlipAt
+          : new Date(userData.lastCoinFlipAt).getTime();
+      }
+      
+      const lastCoinFlipExtraClaimedAt = userData.lastCoinFlipExtraClaimedAt || 0;
+
+      if (lastCoinFlipAtMs === 0) {
+        return { ok: false, error: 'No coin flip history found', status: 400 };
+      }
+
+      if (lastCoinFlipExtraClaimedAt >= lastCoinFlipAtMs) {
+        return { ok: false, error: 'Extra reward already claimed for this flip', status: 400 };
+      }
+
+      const activities = userData.activities || [];
+      const flips = activities.filter(a => a.type === 'coinflip_game');
+      if (flips.length === 0) {
+        return { ok: false, error: 'No coin flip records found', status: 400 };
+      }
+
+      const sorted = [...flips].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const lastFlip = sorted[0];
+      const payout = lastFlip.payout || 0;
+
+      if (payout <= 0) {
+        transaction.update(userRef, {
+          lastCoinFlipExtraClaimedAt: Date.now()
+        });
+        return { ok: true };
+      }
+
+      const extraReward = Number((payout * 0.10).toFixed(4));
+      const timestamp = new Date().toISOString();
+
+      transaction.update(userRef, {
+        balance: admin.firestore.FieldValue.increment(extraReward),
+        totalEarned: admin.firestore.FieldValue.increment(extraReward),
+        lastCoinFlipExtraClaimedAt: Date.now(),
+        activities: admin.firestore.FieldValue.arrayUnion({
+          type: 'coinflip_extra',
+          baseAmount: payout,
+          amount: extraReward,
+          timestamp
+        })
+      });
+
+      return { ok: true };
+    });
+    return result;
+  } catch (error) {
+    console.error(`[creditCoinFlipExtraReward] Error for user ${telegramId}:`, error);
+    return { ok: false, error: 'Database transaction error', status: 500 };
+  }
+}
+
 /**
  * AdsGram Server-to-Server reward URL (GET). Must be called with a shared secret only you and
  * AdsGram know — set Reward URL in the partner panel like:
@@ -818,6 +885,11 @@ router.get('/reward/adsgram', async (req, res) => {
         }
       } else if (gameType === 'SlotMachine') {
         const result = await creditSlotMachineExtraReward(telegramId);
+        if (!result.ok) {
+          return res.status(result.status || 500).send(result.error || 'Error');
+        }
+      } else if (gameType === 'CoinFlip') {
+        const result = await creditCoinFlipExtraReward(telegramId);
         if (!result.ok) {
           return res.status(result.status || 500).send(result.error || 'Error');
         }
@@ -1391,6 +1463,116 @@ router.post('/slot-game', validateINITData, async (req, res) => {
   } catch (error) {
     console.error('Slot Game Error:', error.message);
     res.status(400).json({ error: error.message || 'Slot spin failed' });
+  }
+});
+
+// Coin Flip Game
+router.post('/coinflip-game', validateINITData, async (req, res) => {
+  try {
+    const { bet, choice } = req.body;
+    const telegramId = req.telegramUser?.id;
+
+    if (!telegramId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const validBets = [10, 25, 50, 100, 250, 500];
+    if (!validBets.includes(bet)) {
+      return res.status(400).json({ error: 'Invalid bet amount' });
+    }
+
+    const normalizedChoice = String(choice || '').toLowerCase();
+    if (normalizedChoice !== 'heads' && normalizedChoice !== 'tails') {
+      return res.status(400).json({ error: 'Invalid coin flip choice. Must be "heads" or "tails".' });
+    }
+
+    const userRef = db.collection('users').doc(telegramId.toString());
+    const poolRef = db.collection('soloPool').doc('pool');
+    const now = Date.now();
+    const COOLDOWN_MS = 5000; // 5 seconds
+
+    const result = await db.runTransaction(async (transaction) => {
+      const [userSnap, poolSnap] = await Promise.all([
+        transaction.get(userRef),
+        transaction.get(poolRef)
+      ]);
+
+      if (!userSnap.exists) throw new Error('User not found');
+      const userData = userSnap.data();
+      const currentPool = poolSnap.exists ? (poolSnap.data().amount || 0) : 0;
+
+      // 1. Balance verification
+      if ((userData.balance || 0) < bet) throw new Error('Insufficient balance');
+
+      // 2. Cooldown check
+      const lastFlip = userData.lastCoinFlipAt;
+      if (lastFlip != null) {
+        const lastMs = typeof lastFlip === 'number' ? lastFlip : lastFlip.toMillis?.() || 0;
+        const timeSinceLastFlip = now - lastMs;
+        if (timeSinceLastFlip < COOLDOWN_MS) {
+          throw new Error('Coin flip cooldown active. Please wait.');
+        }
+      }
+
+      // 3. Cryptographically secure coin flip outcome
+      const secureRand = getCryptoRandom();
+      const flipResult = secureRand < 0.5 ? 'heads' : 'tails';
+      let isWin = normalizedChoice === flipResult;
+      
+      let payout = isWin ? bet * 2 : 0;
+      let netGain = payout - bet;
+
+      // 4. Pool Protection: ensure pool doesn't go negative
+      if (isWin && netGain > currentPool) {
+        isWin = false;
+        payout = 0;
+        netGain = -bet;
+      }
+
+      const newUserBalance = (userData.balance || 0) + netGain;
+      const coinflipEarnedUpdate = netGain > 0 ? { totalEarned: admin.firestore.FieldValue.increment(netGain) } : {};
+
+      transaction.update(userRef, {
+        balance: newUserBalance,
+        lastCoinFlipAt: now,
+        activities: admin.firestore.FieldValue.arrayUnion({
+          type: 'coinflip_game',
+          bet: bet,
+          payout: payout,
+          amount: netGain,
+          choice: normalizedChoice,
+          flipResult: isWin ? normalizedChoice : (normalizedChoice === 'heads' ? 'tails' : 'heads'),
+          timestamp: new Date().toISOString()
+        }),
+        ...coinflipEarnedUpdate
+      });
+
+      transaction.update(poolRef, {
+        amount: admin.firestore.FieldValue.increment(-netGain),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        totalSpins: admin.firestore.FieldValue.increment(1)
+      });
+
+      return { payout, netGain, flipResult: isWin ? normalizedChoice : (normalizedChoice === 'heads' ? 'tails' : 'heads'), isWin, newBalance: newUserBalance };
+    });
+
+    // Global stats update
+    incrementSpins();
+    incrementGamePlays('coinflip');
+    recordGameActiveUser('coinflip', telegramId.toString());
+    adjustTotalBalance(result.netGain);
+
+    console.log(`[GAMEPLAY] User ${telegramId} played Coin Flip. Bet: ${bet} FEST, Payout: ${result.payout} FEST, Choice: ${normalizedChoice}, Result: ${result.flipResult}, Net: ${result.netGain}`);
+
+    res.json({
+      success: true,
+      payout: result.payout,
+      netGain: result.netGain,
+      flipResult: result.flipResult,
+      isWin: result.isWin,
+      newBalance: result.newBalance
+    });
+  } catch (error) {
+    console.error('Coin Flip Game Error:', error.message);
+    res.status(400).json({ error: error.message || 'Coin flip failed' });
   }
 });
 
