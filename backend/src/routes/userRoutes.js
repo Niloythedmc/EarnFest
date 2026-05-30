@@ -348,31 +348,26 @@ router.post('/ad-watch/start', validateINITData, async (req, res) => {
 
     const { timestamp, isTrusted, mouseTrail, blockId, adContext, taskId } = decrypted;
 
-    // 1. Replay attack prevention (must be within 10 seconds of request creation)
+    // 1. Replay attack prevention (must be within 15 seconds of request creation)
     const now = Date.now();
-    if (!timestamp || Math.abs(now - timestamp) > 10000) {
+    if (!timestamp || Math.abs(now - timestamp) > 15000) {
       console.warn(`[AdSecurity] Replay attempt or timestamp mismatch for user ${telegramId}: diff=${now - timestamp}ms`);
       return res.status(400).json({ error: 'Security token expired' });
     }
 
-    // 2. Event trust check
+    // Telemetry Logging (relaxed to prevent false positives for real mobile/touch users)
     if (isTrusted !== true) {
-      console.warn(`[AdSecurity] Programmatic trigger detected (isTrusted !== true) for user ${telegramId}`);
-      return res.status(400).json({ error: 'Automated clicks are not allowed' });
+      console.info(`[AdSecurity] Non-trusted event trigger for user ${telegramId}`);
     }
 
-    // 3. Mouse trail validation (ensure real device events)
     if (!Array.isArray(mouseTrail) || mouseTrail.length === 0) {
-      console.warn(`[AdSecurity] No interaction trail found for user ${telegramId}`);
-      return res.status(400).json({ error: 'Telemetry verification failed' });
-    }
-
-    // Check if mouseTrail coordinates are completely static or fake
-    const firstPoint = mouseTrail[0];
-    const isStatic = mouseTrail.every(p => p.x === firstPoint.x && p.y === firstPoint.y);
-    if (isStatic && mouseTrail.length > 1) {
-      console.warn(`[AdSecurity] Static mouse/touch trail detected for user ${telegramId}`);
-      return res.status(400).json({ error: 'Automated gesture detected' });
+      console.info(`[AdSecurity] No interaction trail found for user ${telegramId}`);
+    } else {
+      const firstPoint = mouseTrail[0];
+      const isStatic = mouseTrail.every(p => p.x === firstPoint.x && p.y === firstPoint.y);
+      if (isStatic) {
+        console.info(`[AdSecurity] Static mouse/touch trail for user ${telegramId}`);
+      }
     }
 
     const userRef = db.collection('users').doc(String(sessionUserId));

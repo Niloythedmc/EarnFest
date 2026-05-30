@@ -68,6 +68,63 @@ const AdsgramTask = memo(({ blockId, onBannerNotFound, onReward, children }) => 
   );
 });
 
+const TadsBanner = () => {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    let tadsInterval;
+    const initAd = () => {
+      if (window.tads && typeof window.tads.init === 'function') {
+        try {
+          const adController = window.tads.init({
+            widgetId: 9864,
+            type: 'static',
+            debug: false
+          });
+          adController.loadAd()
+            .then(() => adController.showAd())
+            .catch((err) => console.warn('[TADS] load/show ad error:', err));
+        } catch (e) {
+          console.warn('[TADS] initialization error:', e);
+        }
+      }
+    };
+
+    if (window.tads && window.tads.init) {
+      initAd();
+    } else {
+      tadsInterval = setInterval(() => {
+        if (window.tads && window.tads.init) {
+          clearInterval(tadsInterval);
+          initAd();
+        }
+      }, 100);
+    }
+
+    return () => {
+      if (tadsInterval) clearInterval(tadsInterval);
+    };
+  }, []);
+
+  return (
+    <div style={{ marginTop: '16px', marginBottom: '8px', display: 'flex', justifyContent: 'center', width: '100%' }}>
+      <div 
+        id="tads-container-9864" 
+        ref={containerRef}
+        style={{ 
+          width: '100%', 
+          minHeight: '80px', 
+          borderRadius: '16px', 
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px dashed rgba(255,255,255,0.1)',
+          padding: '8px',
+          overflow: 'hidden'
+        }}
+      />
+    </div>
+  );
+};
+
 const TasksPage = () => {
   const { user, setUser } = useUser();
   const { t } = useLanguage();
@@ -1012,6 +1069,7 @@ const TasksPage = () => {
               </motion.div>
             )}
             <AdTaskBanner />
+            <TadsBanner />
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
               {[
                 { label: 'Spin', image: '/Wheel.png', path: '/spin' },
