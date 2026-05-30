@@ -222,7 +222,7 @@ export const AdsClient = {
       lastAdViewTime = now;
 
       const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || 'unknown';
-      const choices = ['richads', 'monetag', 'adexium'];
+      const choices = ['richads', 'monetag', 'adexium', 'adsgram'];
       const choice = choices[Math.floor(Math.random() * choices.length)];
       
       console.log(`[AdsClient] Showing interstitial (${choice}). Count in last hour: ${check.views.length}`);
@@ -255,6 +255,19 @@ export const AdsClient = {
             res = { done: true };
           } catch (err) {
             console.warn('[AdsClient] Adexium interstitial failed, falling back to RichAds:', err);
+            res = await showRichAdsInterstitial();
+          }
+        } else {
+          res = await showRichAdsInterstitial();
+        }
+      } else if (choice === 'adsgram') {
+        if (window.Adsgram) {
+          try {
+            const blockId = INTERSTITIAL_BLOCK_IDS[Math.floor(Math.random() * INTERSTITIAL_BLOCK_IDS.length)];
+            const AdController = window.Adsgram.init({ blockId });
+            res = await AdController.show();
+          } catch (err) {
+            console.warn('[AdsClient] Adsgram interstitial failed, falling back to RichAds:', err);
             res = await showRichAdsInterstitial();
           }
         } else {
