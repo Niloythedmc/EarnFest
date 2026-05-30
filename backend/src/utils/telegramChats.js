@@ -44,16 +44,38 @@ export function getRequiredChatsForAdReward() {
   ];
 }
 
+const membershipCache = new Map();
+
 /**
  * Returns { ok: true } or { ok: false, missing: [{ title, username }] }
  */
 export async function checkAdRewardMembership(userId) {
+  const now = Date.now();
+  const cacheKey = userId.toString();
+  const cached = membershipCache.get(cacheKey);
+
+  if (cached) {
+    const age = now - cached.timestamp;
+    const ttl = cached.result.ok ? 10 * 60 * 1000 : 1 * 60 * 1000; // 10 mins for true, 1 min for false
+    if (age < ttl) {
+      return cached.result;
+    }
+  }
+
   const chats = getRequiredChatsForAdReward();
   const missing = [];
   for (const c of chats) {
     const ok = await checkChatMember(userId, c.username);
     if (!ok) missing.push({ title: c.title, username: c.username });
   }
-  if (missing.length) return { ok: false, missing };
-  return { ok: true };
+
+  const result = missing.length ? { ok: false, missing } : { ok: true };
+
+  membershipCache.set(cacheKey, {
+    result,
+    timestamp: now
+  });
+
+  return result;
 }
+

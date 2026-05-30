@@ -1,4 +1,4 @@
-import admin, { db } from '../config/db.js';
+import admin, { db, mongoDb } from '../config/db.js';
 import { sendTelegramMessage } from './bot.js';
 
 const CONTESTS_COLLECTION = 'contests';
@@ -206,50 +206,60 @@ class ContestManager {
       const endVar = new Date(endTime);
 
       try {
-        const snapshot = await db.collection('transactions')
-          .where('createdAt', '>=', startVar)
-          .where('createdAt', '<=', endVar)
-          .get();
-
-        const userTotals = {};
-        snapshot.docs.forEach(doc => {
-          const id = doc.id;
-          if (id.startsWith('chest_') || id.startsWith('task_chest_')) {
-            const data = doc.data();
-            const tgId = String(data.uid || data.tgId);
-            if (tgId) {
-              userTotals[tgId] = (userTotals[tgId] || 0) + (Number(data.amount) || 0);
+        // Highly optimized MongoDB aggregation pipeline
+        const pipeline = [
+          {
+            $match: {
+              _id: { $regex: /^(chest_|task_chest_)/ },
+              createdAt: { $gte: startVar, $lte: endVar }
             }
+          },
+          {
+            $group: {
+              _id: { $ifNull: ["$uid", "$tgId"] },
+              totalAmount: { $sum: "$amount" }
+            }
+          },
+          {
+            $sort: { totalAmount: -1 }
+          },
+          {
+            $limit: limit
+          }
+        ];
+
+        const aggregated = await mongoDb.collection('transactions').aggregate(pipeline).toArray();
+        const uids = aggregated.map(entry => String(entry._id)).filter(Boolean);
+
+        // Fetch user profiles in a single lookup
+        const userDocs = await mongoDb.collection('users').find({ _id: { $in: uids } }).toArray();
+        const userMap = {};
+        userDocs.forEach(u => {
+          userMap[String(u._id)] = u;
+        });
+
+        const leaderboard = aggregated.map(entry => {
+          const tgId = String(entry._id);
+          const userData = userMap[tgId];
+          if (userData) {
+            return {
+              telegramId: userData.telegramId || tgId,
+              firstName: userData.firstName || 'User ' + tgId,
+              username: userData.username || '',
+              photoUrl: userData.photoUrl || '',
+              value: entry.totalAmount,
+            };
+          } else {
+            return {
+              telegramId: tgId,
+              firstName: 'User ' + tgId,
+              username: '',
+              photoUrl: '',
+              value: entry.totalAmount,
+            };
           }
         });
 
-        const sortedUsers = Object.entries(userTotals)
-          .map(([tgId, value]) => ({ tgId, value }))
-          .sort((a, b) => b.value - a.value)
-          .slice(0, limit);
-
-        const leaderboard = [];
-        for (const entry of sortedUsers) {
-          const userDoc = await db.collection('users').doc(entry.tgId).get();
-          if (userDoc.exists) {
-            const userData = userDoc.data();
-            leaderboard.push({
-              telegramId: userData.telegramId,
-              firstName: userData.firstName,
-              username: userData.username,
-              photoUrl: userData.photoUrl,
-              value: entry.value,
-            });
-          } else {
-            leaderboard.push({
-              telegramId: entry.tgId,
-              firstName: 'User ' + entry.tgId,
-              username: '',
-              photoUrl: '',
-              value: entry.value,
-            });
-          }
-        }
         return leaderboard;
       } catch (err) {
         console.error('Chest leaderboard aggregation failed:', err);
@@ -328,32 +338,33 @@ class ContestManager {
       const endVar = new Date(endTime);
 
       try {
-        const snapshot = await db.collection('transactions')
-          .where('createdAt', '>=', startVar)
-          .where('createdAt', '<=', endVar)
-          .get();
-
-        const userTotals = {};
-        snapshot.docs.forEach(doc => {
-          const id = doc.id;
-          if (id.startsWith('chest_') || id.startsWith('task_chest_')) {
-            const data = doc.data();
-            const tgId = String(data.uid || data.tgId);
-            if (tgId) {
-              userTotals[tgId] = (userTotals[tgId] || 0) + (Number(data.amount) || 0);
+        // Highly optimized MongoDB aggregation pipeline for single user's position
+        const pipeline = [
+          {
+            $match: {
+              _id: { $regex: /^(chest_|task_chest_)/ },
+              createdAt: { $gte: startVar, $lte: endVar }
             }
+          },
+          {
+            $group: {
+              _id: { $ifNull: ["$uid", "$tgId"] },
+              totalAmount: { $sum: "$amount" }
+            }
+          },
+          {
+            $sort: { totalAmount: -1 }
           }
-        });
+        ];
 
-        const sorted = Object.entries(userTotals)
-          .map(([tgId, value]) => ({ tgId, value }))
-          .sort((a, b) => b.value - a.value);
+        const aggregated = await mongoDb.collection('transactions').aggregate(pipeline).toArray();
 
-        const myIndex = sorted.findIndex(item => item.tgId === telegramId.toString());
-        const myValue = userTotals[telegramId.toString()] || 0;
+        const myIndex = aggregated.findIndex(item => String(item._id) === telegramId.toString());
+        const myEntry = aggregated[myIndex];
+        const myValue = myEntry ? myEntry.totalAmount : 0;
 
         return {
-          position: myIndex >= 0 ? myIndex + 1 : sorted.length + 1,
+          position: myIndex >= 0 ? myIndex + 1 : aggregated.length + 1,
           value: myValue,
         };
       } catch (err) {
@@ -371,13 +382,14 @@ class ContestManager {
     const userValue = userSnap.data()[field] || 0;
     
     try {
-      // Count how many users have a higher value
+      // Highly optimized native count query to avoid fetching all higher users
       const higherCount = await db.collection('users')
         .where(field, '>', userValue)
+        .count()
         .get();
       
       return {
-        position: higherCount.size + 1,
+        position: (higherCount.data()?.count || 0) + 1,
         value: userValue,
       };
     } catch (e) {

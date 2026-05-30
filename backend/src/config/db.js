@@ -413,5 +413,6 @@ const db = {
 
 const auth = null;
 
-export { db, auth };
+export { db, auth, mongoDb };
 export default admin;
+
