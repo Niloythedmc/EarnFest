@@ -632,25 +632,33 @@ async function creditSpinWheelExtraReward(telegramId) {
       if (!userDoc.exists) return { ok: false, error: 'User not found', status: 404 };
 
       const userData = userDoc.data();
-      const lastSpinAt = userData.lastSpinAt || 0;
+      
+      let lastSpinGameAtMs = 0;
+      if (userData.lastSpinGameAt) {
+        lastSpinGameAtMs = typeof userData.lastSpinGameAt === 'number'
+          ? userData.lastSpinGameAt
+          : new Date(userData.lastSpinGameAt).getTime();
+      }
+      
       const lastSpinExtraClaimedAt = userData.lastSpinExtraClaimedAt || 0;
 
-      if (lastSpinAt === 0) {
+      if (lastSpinGameAtMs === 0) {
         return { ok: false, error: 'No spin wheel history found', status: 400 };
       }
 
-      if (lastSpinExtraClaimedAt > lastSpinAt) {
+      if (lastSpinExtraClaimedAt >= lastSpinGameAtMs) {
         return { ok: false, error: 'Extra reward already claimed for this spin', status: 400 };
       }
 
-      const spinHistory = userData.spinHistory || [];
-      if (spinHistory.length === 0) {
+      const activities = userData.activities || [];
+      const spins = activities.filter(a => a.type === 'spin_game');
+      if (spins.length === 0) {
         return { ok: false, error: 'No spin records found', status: 400 };
       }
 
-      const sorted = [...spinHistory].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const sorted = [...spins].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       const lastSpin = sorted[0];
-      const winAmount = lastSpin.amount || 0;
+      const winAmount = lastSpin.rewardAmount || 0;
 
       if (winAmount <= 0) {
         transaction.update(userRef, {
@@ -659,7 +667,7 @@ async function creditSpinWheelExtraReward(telegramId) {
         return { ok: true };
       }
 
-      const extraReward = Number((winAmount * 0.20).toFixed(4));
+      const extraReward = Number((winAmount * 0.10).toFixed(4));
       const timestamp = new Date().toISOString();
 
       transaction.update(userRef, {
@@ -691,14 +699,21 @@ async function creditSlotMachineExtraReward(telegramId) {
       if (!userDoc.exists) return { ok: false, error: 'User not found', status: 404 };
 
       const userData = userDoc.data();
-      const lastSlotAt = userData.lastSlotAt || 0;
+      
+      let lastSlotAtMs = 0;
+      if (userData.lastSlotAt) {
+        lastSlotAtMs = typeof userData.lastSlotAt === 'number'
+          ? userData.lastSlotAt
+          : new Date(userData.lastSlotAt).getTime();
+      }
+      
       const lastSlotExtraClaimedAt = userData.lastSlotExtraClaimedAt || 0;
 
-      if (lastSlotAt === 0) {
+      if (lastSlotAtMs === 0) {
         return { ok: false, error: 'No slot machine history found', status: 400 };
       }
 
-      if (lastSlotExtraClaimedAt > lastSlotAt) {
+      if (lastSlotExtraClaimedAt >= lastSlotAtMs) {
         return { ok: false, error: 'Extra reward already claimed for this slot play', status: 400 };
       }
 
@@ -719,7 +734,7 @@ async function creditSlotMachineExtraReward(telegramId) {
         return { ok: true };
       }
 
-      const extraReward = Number((winAmount * 0.20).toFixed(4));
+      const extraReward = Number((winAmount * 0.10).toFixed(4));
       const timestamp = new Date().toISOString();
 
       transaction.update(userRef, {

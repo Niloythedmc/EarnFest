@@ -248,10 +248,10 @@ export const AdsClient = {
               wid: '26ae87d5-b62e-4ff4-a518-01da857dffdd',
               adFormat: 'interstitial'
             });
-            widget.requestAd('interstitial');
             widget.on('adReceived', (ad) => {
               widget.displayAd(ad);
             });
+            widget.requestAd('interstitial');
             res = { done: true };
           } catch (err) {
             console.warn('[AdsClient] Adexium interstitial failed, falling back to RichAds:', err);

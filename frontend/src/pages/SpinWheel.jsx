@@ -82,7 +82,12 @@ const SpinWheel = () => {
       const encrypted = encryptPayload(handshakePayload, key);
 
       // Perform handshake
-      await axios.post(`${apiBase}/api/user/ad-watch/start`, { payload: encrypted });
+      const tg = window.Telegram?.WebApp;
+      await axios.post(
+        `${apiBase}/api/user/ad-watch/start`, 
+        { telegramId: user?.telegramId || tg?.initDataUnsafe?.user?.id?.toString(), payload: encrypted },
+        { headers: { 'x-telegram-init-data': tg?.initData || '' } }
+      );
 
       // Load and show Adsgram ad
       const AdController = window.Adsgram.init({ blockId });
@@ -96,7 +101,7 @@ const SpinWheel = () => {
             .then(() => refreshUser()),
           {
             loading: 'Crediting extra reward...',
-            success: '20% Extra reward credited!',
+            success: '10% Extra reward credited!',
             error: 'Failed to update balance'
           }
         );
@@ -384,7 +389,7 @@ const SpinWheel = () => {
                   Boost your winnings by playing a quick video!
                 </p>
                 <div style={{ fontSize: '1.1rem', fontWeight: '900', color: 'var(--primary-gold)', marginTop: '4px' }}>
-                  +{(lastWinAmount * 0.2).toFixed(1)} $FEST Extra!
+                  +{(lastWinAmount * 0.1).toFixed(1)} $FEST Extra!
                 </div>
               </div>
 
@@ -409,7 +414,7 @@ const SpinWheel = () => {
                   }}
                 >
                   <PlayCircle size={18} />
-                  +20% Extra
+                  +10% Extra
                 </button>
 
                 <button
