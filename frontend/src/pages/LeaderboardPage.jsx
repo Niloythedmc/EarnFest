@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, Button, GameCard } from '../components/UI';
-import { Trophy, Users, Medal, Crown, Timer, TrendingUp, Gift } from 'lucide-react';
+import { Trophy, Users, Medal, Crown, Timer, TrendingUp } from 'lucide-react';
 import { useConfig } from '../context/ConfigContext';
 import { useUser } from '../context/UserContext';
 import axios from 'axios';
@@ -11,7 +11,6 @@ const FEST_TO_USD = 0.00005;
 
 const TAB_REFERS = 'refers';
 const TAB_EARNING = 'earning';
-const TAB_CHESTS = 'chests';
 
 const LeaderboardPage = () => {
   const { apiBase } = useConfig();
@@ -46,7 +45,6 @@ const LeaderboardPage = () => {
   // Map frontend tab value to backend API type
   const tabToApiType = (tab) => {
     if (tab === 'refers') return 'refer';
-    if (tab === 'chests') return 'chest';
     return 'earning';
   };
 
@@ -222,9 +220,7 @@ const LeaderboardPage = () => {
     const rankIcon = showPrize ? getRankIcon(rank) : null;
     const valueLabel = activeTab === TAB_REFERS 
       ? 'REFERS' 
-      : activeTab === TAB_CHESTS
-        ? '$FEST FROM CHESTS'
-        : '$FEST EARNED';
+      : '$FEST EARNED';
     const valueDisplay = activeTab === TAB_REFERS
       ? entry.value
       : formatBalance(entry.value);
@@ -324,7 +320,6 @@ const LeaderboardPage = () => {
         {[
           { id: TAB_REFERS, label: 'Refers', icon: Users },
           { id: TAB_EARNING, label: 'Earning', icon: TrendingUp },
-          { id: TAB_CHESTS, label: 'Chest', icon: Gift },
         ].map(({ id, label, icon: Icon }) => (
           <button
             key={id}

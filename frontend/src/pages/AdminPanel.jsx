@@ -2075,10 +2075,10 @@ const AdminPanel = () => {
                 <div className="flex-row-between" style={{ marginBottom: '8px' }}>
                   <div>
                     <div style={{ fontWeight: '800', fontSize: '0.95rem' }}>
-                      {contest.title || (contest.type === 'refer' ? 'Referral Contest' : contest.type === 'chest' ? 'Chest Contest' : 'Earning Contest')}
+                      {contest.title || (contest.type === 'refer' ? 'Referral Contest' : 'Earning Contest')}
                     </div>
                     <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px' }}>
-                      {contest.type === 'refer' ? '👥 Referral' : contest.type === 'chest' ? '🎁 Chest' : '💰 Earning'} · {contest.winners} winner(s) · {contest.prizeType === 'tier' ? '🏆 Tier' : '🪙 $FEST'} prizes
+                      {contest.type === 'refer' ? '👥 Referral' : '💰 Earning'} · {contest.winners} winner(s) · {contest.prizeType === 'tier' ? '🏆 Tier' : '🪙 $FEST'} prizes
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -2186,7 +2186,6 @@ const AdminPanel = () => {
                 >
                   <option value="refer">Referral Contest</option>
                   <option value="earning">Earning Contest</option>
-                  <option value="chest">Chest Contest</option>
                 </select>
               </div>
 

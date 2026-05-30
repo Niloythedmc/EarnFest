@@ -402,14 +402,12 @@ const Home = () => {
               </div>
               <div>
                 <h4 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#fff', textTransform: 'capitalize' }}>
-                  {activeContest.type === 'refer' ? 'Referral' : activeContest.type === 'chest' ? 'Chest' : 'Earning'} Championship
+                  {activeContest.type === 'refer' ? 'Referral' : 'Earning'} Championship
                 </h4>
                 <p className="text-sm-muted" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
                   {activeContest.type === 'refer' 
                     ? 'Climb the ranks by referring new members.' 
-                    : activeContest.type === 'chest'
-                      ? 'Climb the ranks by opening chests and accumulating rewards.'
-                      : 'Climb the ranks by maximizing your $FEST earnings.'}
+                    : 'Climb the ranks by maximizing your $FEST earnings.'}
                 </p>
               </div>
               <div className="flex-row-between" style={{ background: 'rgba(0,0,0,0.2)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)' }}>

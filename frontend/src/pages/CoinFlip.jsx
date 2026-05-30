@@ -29,7 +29,6 @@ const CoinFlip = () => {
   const [choice, setChoice] = useState('heads'); // 'heads' or 'tails'
   const [flipping, setFlipping] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [poolAmount, setPoolAmount] = useState(0);
   const [showInfo, setShowInfo] = useState(false);
   
   // Extra Reward Modal state
@@ -49,24 +48,13 @@ const CoinFlip = () => {
       lose: new Audio('https://www.soundjay.com/buttons/sounds/button-11.mp3')
     };
 
-    // Fetch initial pool amount
-    const fetchPool = async () => {
-      try {
-        const res = await axios.get(`${apiBase}/api/user/pool-status`);
-        setPoolAmount(res.data.poolAmount || 0);
-      } catch (err) {
-        console.error('Failed to fetch pool status:', err);
-      }
-    };
-    fetchPool();
-
     return () => {
       Object.values(audioRefs.current).forEach(a => {
         a.pause();
         a.src = "";
       });
     };
-  }, [apiBase]);
+  }, []);
 
   const playSFX = (key) => {
     const sfx = audioRefs.current[key];
@@ -115,12 +103,6 @@ const CoinFlip = () => {
             tg?.HapticFeedback?.notificationOccurred('error');
             toast.error(`It landed on ${res.flipResult}. You lost!`);
           }
-          
-          // Refresh solo pool status
-          axios.get(`${apiBase}/api/user/pool-status`)
-            .then(pRes => setPoolAmount(pRes.data.poolAmount || 0))
-            .catch(() => {});
-
         }, 1500);
       } else {
         setFlipping(false);
@@ -246,21 +228,13 @@ const CoinFlip = () => {
         )}
       </AnimatePresence>
 
-      {/* Pool and Balance Dashboard */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-        <div style={{ background: 'rgba(0,0,0,0.6)', padding: '12px 14px', borderRadius: '20px', border: '1px solid rgba(112,0,255,0.2)', textAlign: 'center' }}>
+      {/* Balance Dashboard */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+        <div style={{ background: 'rgba(0,0,0,0.6)', padding: '12px 24px', borderRadius: '20px', border: '1px solid rgba(112,0,255,0.2)', textAlign: 'center', minWidth: '160px' }}>
           <div style={{ color: '#9a9cff', fontSize: '0.65rem', letterSpacing: '1.5px', fontWeight: '800', marginBottom: '4px' }}>BALANCE</div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '1.1rem', fontWeight: '900', color: '#fff' }}>{formatBalance(user.balance)}</span>
-            <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#00ffaa' }}>$FEST</span>
-          </div>
-        </div>
-
-        <div style={{ background: 'rgba(0,0,0,0.6)', padding: '12px 14px', borderRadius: '20px', border: '1px solid rgba(0,212,255,0.2)', textAlign: 'center' }}>
-          <div style={{ color: '#00d4ff', fontSize: '0.65rem', letterSpacing: '1.5px', fontWeight: '800', marginBottom: '4px' }}>SOLO GAME POOL</div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '1.1rem', fontWeight: '900', color: '#fff' }}>{formatBalance(poolAmount)}</span>
-            <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#00ffaa' }}>$FEST</span>
+            <span style={{ fontSize: '1.25rem', fontWeight: '900', color: '#fff' }}>{formatBalance(user.balance)}</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#00ffaa' }}>$FEST</span>
           </div>
         </div>
       </div>
@@ -270,7 +244,7 @@ const CoinFlip = () => {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        height: '240px',
+        height: '260px',
         position: 'relative',
         perspective: '1000px',
         marginBottom: '20px'
@@ -285,8 +259,15 @@ const CoinFlip = () => {
         }} />
 
         <motion.div
-          animate={flipping ? {} : { y: [0, -8, 0] }}
-          transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+          animate={flipping ? {
+            y: [0, -140, 0],
+            scale: [1, 1.35, 0.75, 1],
+          } : { y: [0, -8, 0] }}
+          transition={flipping ? {
+            duration: 1.5,
+            times: [0, 0.45, 0.8, 1],
+            ease: "easeInOut"
+          } : { repeat: Infinity, duration: 3, ease: 'easeInOut' }}
           style={{
             width: '160px',
             height: '160px',

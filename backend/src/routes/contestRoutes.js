@@ -54,8 +54,8 @@ router.get('/leaderboard/:type', async (req, res) => {
     const { type } = req.params;
     // Normalize: accept 'refers' as alias for 'refer'
     const normalizedType = type === 'refers' ? 'refer' : type;
-    if (!['refer', 'earning', 'chest'].includes(normalizedType)) {
-      return res.status(400).json({ error: 'Invalid type. Must be "refer", "earning" or "chest"' });
+    if (!['refer', 'earning'].includes(normalizedType)) {
+      return res.status(400).json({ error: 'Invalid type. Must be "refer" or "earning"' });
     }
 
     const limit = parseInt(req.query.limit) || 100;
@@ -83,8 +83,8 @@ router.get('/my-position/:type', async (req, res) => {
   try {
     const { type } = req.params;
     const normalizedType = type === 'refers' ? 'refer' : type;
-    if (!['refer', 'earning', 'chest'].includes(normalizedType)) {
-      return res.status(400).json({ error: 'Invalid type. Must be "refer", "earning" or "chest"' });
+    if (!['refer', 'earning'].includes(normalizedType)) {
+      return res.status(400).json({ error: 'Invalid type. Must be "refer" or "earning"' });
     }
 
     const telegramId = req.telegramUser?.id?.toString();
@@ -114,8 +114,8 @@ router.post('/', async (req, res) => {
     const { type, title, startTime, endTime, winners, prizeType, prizes } = req.body;
 
     // Validation
-    if (!type || !['refer', 'earning', 'chest'].includes(type)) {
-      return res.status(400).json({ error: 'Invalid or missing type. Must be "refer", "earning" or "chest"' });
+    if (!type || !['refer', 'earning'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid or missing type. Must be "refer" or "earning"' });
     }
     if (!startTime || !endTime) {
       return res.status(400).json({ error: 'Start time and end time are required' });
