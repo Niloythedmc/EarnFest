@@ -18,6 +18,7 @@ import { motion } from 'framer-motion';
 
 import { AdsClient } from '../utils/AdsClient';
 import { formatBalance } from '../utils/formatters';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 
 const ReferralPage = () => {
@@ -26,8 +27,7 @@ const ReferralPage = () => {
   const referralLink = `https://t.me/EarnFestBot/Earn?startapp=${user?.telegramId || 'USERID'}`;
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(referralLink);
-    toast.success('Referral link copied!');
+    copyTextToClipboard(referralLink, 'Referral link copied!');
     AdsClient.showInterstitial();
   };
 

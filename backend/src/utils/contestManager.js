@@ -115,6 +115,29 @@ class ContestManager {
   }
 
   /**
+   * Get active (ongoing) contest by type
+   */
+  async getActiveContestByType(type) {
+    const now = Date.now();
+    try {
+      const snapshot = await db.collection(CONTESTS_COLLECTION)
+        .where('type', '==', type)
+        .get();
+      const active = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .find(c => c.startTime <= now && c.endTime > now);
+      return active || null;
+    } catch (e) {
+      console.warn('Query for active contest by type failed:', e.message);
+      const allSnap = await db.collection(CONTESTS_COLLECTION).get();
+      const active = allSnap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .find(c => c.type === type && c.startTime <= now && c.endTime > now);
+      return active || null;
+    }
+  }
+
+  /**
    * Get upcoming contests
    */
   async getUpcomingContests() {
@@ -151,6 +174,89 @@ class ContestManager {
    * Get leaderboard data for a specific contest type
    */
   async getContestLeaderboard(type, limit = 100) {
+    if (type === 'chest') {
+      let startTime = 0;
+      let endTime = Date.now();
+
+      // Find active or recent chest contest
+      let contest = await this.getActiveContestByType('chest');
+      if (!contest) {
+        try {
+          const snapshot = await db.collection(CONTESTS_COLLECTION)
+            .where('type', '==', 'chest')
+            .orderBy('endTime', 'desc')
+            .limit(1)
+            .get();
+          if (snapshot.size > 0) {
+            contest = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+          }
+        } catch (e) {
+          console.warn('Failed to fetch recent chest contest:', e);
+        }
+      }
+
+      if (contest) {
+        startTime = contest.startTime;
+        endTime = contest.endTime;
+      } else {
+        startTime = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      }
+
+      const startVar = new Date(startTime);
+      const endVar = new Date(endTime);
+
+      try {
+        const snapshot = await db.collection('transactions')
+          .where('createdAt', '>=', startVar)
+          .where('createdAt', '<=', endVar)
+          .get();
+
+        const userTotals = {};
+        snapshot.docs.forEach(doc => {
+          const id = doc.id;
+          if (id.startsWith('chest_') || id.startsWith('task_chest_')) {
+            const data = doc.data();
+            const tgId = String(data.uid || data.tgId);
+            if (tgId) {
+              userTotals[tgId] = (userTotals[tgId] || 0) + (Number(data.amount) || 0);
+            }
+          }
+        });
+
+        const sortedUsers = Object.entries(userTotals)
+          .map(([tgId, value]) => ({ tgId, value }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, limit);
+
+        const leaderboard = [];
+        for (const entry of sortedUsers) {
+          const userDoc = await db.collection('users').doc(entry.tgId).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            leaderboard.push({
+              telegramId: userData.telegramId,
+              firstName: userData.firstName,
+              username: userData.username,
+              photoUrl: userData.photoUrl,
+              value: entry.value,
+            });
+          } else {
+            leaderboard.push({
+              telegramId: entry.tgId,
+              firstName: 'User ' + entry.tgId,
+              username: '',
+              photoUrl: '',
+              value: entry.value,
+            });
+          }
+        }
+        return leaderboard;
+      } catch (err) {
+        console.error('Chest leaderboard aggregation failed:', err);
+        return [];
+      }
+    }
+
     const field = type === 'refer' ? 'referralCount' : 'totalEarned';
     try {
       const snapshot = await db.collection('users')
@@ -191,6 +297,71 @@ class ContestManager {
    * Get user's position in a contest leaderboard
    */
   async getUserPosition(type, telegramId) {
+    if (type === 'chest') {
+      let startTime = 0;
+      let endTime = Date.now();
+
+      let contest = await this.getActiveContestByType('chest');
+      if (!contest) {
+        try {
+          const snapshot = await db.collection(CONTESTS_COLLECTION)
+            .where('type', '==', 'chest')
+            .orderBy('endTime', 'desc')
+            .limit(1)
+            .get();
+          if (snapshot.size > 0) {
+            contest = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+          }
+        } catch (e) {
+          console.warn('Failed to fetch recent chest contest for position:', e);
+        }
+      }
+
+      if (contest) {
+        startTime = contest.startTime;
+        endTime = contest.endTime;
+      } else {
+        startTime = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      }
+
+      const startVar = new Date(startTime);
+      const endVar = new Date(endTime);
+
+      try {
+        const snapshot = await db.collection('transactions')
+          .where('createdAt', '>=', startVar)
+          .where('createdAt', '<=', endVar)
+          .get();
+
+        const userTotals = {};
+        snapshot.docs.forEach(doc => {
+          const id = doc.id;
+          if (id.startsWith('chest_') || id.startsWith('task_chest_')) {
+            const data = doc.data();
+            const tgId = String(data.uid || data.tgId);
+            if (tgId) {
+              userTotals[tgId] = (userTotals[tgId] || 0) + (Number(data.amount) || 0);
+            }
+          }
+        });
+
+        const sorted = Object.entries(userTotals)
+          .map(([tgId, value]) => ({ tgId, value }))
+          .sort((a, b) => b.value - a.value);
+
+        const myIndex = sorted.findIndex(item => item.tgId === telegramId.toString());
+        const myValue = userTotals[telegramId.toString()] || 0;
+
+        return {
+          position: myIndex >= 0 ? myIndex + 1 : sorted.length + 1,
+          value: myValue,
+        };
+      } catch (err) {
+        console.error('Chest user position failed:', err);
+        return { position: null, value: 0 };
+      }
+    }
+
     const field = type === 'refer' ? 'referralCount' : 'totalEarned';
     
     // Get the user's value

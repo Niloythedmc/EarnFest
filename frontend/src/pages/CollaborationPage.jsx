@@ -12,6 +12,7 @@ import { useUser } from '../context/UserContext';
 import { useConfig } from '../context/ConfigContext';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { useTonConnectUI, useTonAddress, TonConnectButton } from '@tonconnect/ui-react';
 import { beginCell } from '@ton/core';
 
@@ -434,8 +435,7 @@ const CollaborationPage = () => {
   };
 
   const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard!');
+    copyTextToClipboard(text);
   };
 
   // ── Render States ──────────────────────────────────────────────────────────

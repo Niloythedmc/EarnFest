@@ -13,7 +13,14 @@ router.use(validateINITData);
  */
 router.get('/active', async (req, res) => {
   try {
-    const activeContest = await contestManager.getActiveContest();
+    const { type } = req.query;
+    let activeContest;
+    if (type) {
+      activeContest = await contestManager.getActiveContestByType(type);
+    } else {
+      activeContest = await contestManager.getActiveContest();
+    }
+
     if (!activeContest) {
       return res.json({ contest: null, leaderboard: [] });
     }
@@ -47,8 +54,8 @@ router.get('/leaderboard/:type', async (req, res) => {
     const { type } = req.params;
     // Normalize: accept 'refers' as alias for 'refer'
     const normalizedType = type === 'refers' ? 'refer' : type;
-    if (!['refer', 'earning'].includes(normalizedType)) {
-      return res.status(400).json({ error: 'Invalid type. Must be "refer" or "earning"' });
+    if (!['refer', 'earning', 'chest'].includes(normalizedType)) {
+      return res.status(400).json({ error: 'Invalid type. Must be "refer", "earning" or "chest"' });
     }
 
     const limit = parseInt(req.query.limit) || 100;
@@ -76,8 +83,8 @@ router.get('/my-position/:type', async (req, res) => {
   try {
     const { type } = req.params;
     const normalizedType = type === 'refers' ? 'refer' : type;
-    if (!['refer', 'earning'].includes(normalizedType)) {
-      return res.status(400).json({ error: 'Invalid type. Must be "refer" or "earning"' });
+    if (!['refer', 'earning', 'chest'].includes(normalizedType)) {
+      return res.status(400).json({ error: 'Invalid type. Must be "refer", "earning" or "chest"' });
     }
 
     const telegramId = req.telegramUser?.id?.toString();
@@ -107,8 +114,8 @@ router.post('/', async (req, res) => {
     const { type, title, startTime, endTime, winners, prizeType, prizes } = req.body;
 
     // Validation
-    if (!type || !['refer', 'earning'].includes(type)) {
-      return res.status(400).json({ error: 'Invalid or missing type. Must be "refer" or "earning"' });
+    if (!type || !['refer', 'earning', 'chest'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid or missing type. Must be "refer", "earning" or "chest"' });
     }
     if (!startTime || !endTime) {
       return res.status(400).json({ error: 'Start time and end time are required' });

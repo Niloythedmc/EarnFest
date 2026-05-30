@@ -14,6 +14,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { useConfig } from '../context/ConfigContext';
+import { copyTextToClipboard } from '../utils/clipboard';
 import Skeleton from '../components/Skeleton';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -942,7 +943,7 @@ const AdminPanel = () => {
               </div>
               <div className="flex-center" style={{ gap: '10px' }}>
                 <div onClick={() => {
-                  navigator.clipboard.writeText(`https://t.me/EarnFestBot/Earn?startapp=${link.param}`);
+                  copyTextToClipboard(`https://t.me/EarnFestBot/Earn?startapp=${link.param}`, 'Referral link copied!');
                 }} style={{ color: 'var(--text-secondary)', cursor: 'pointer' }}>
                   <Copy size={18} />
                 </div>
@@ -1405,8 +1406,7 @@ const AdminPanel = () => {
               <span>{generatedApiUrl}</span>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(generatedApiUrl);
-                  toast.success('API URL copied to clipboard!');
+                  copyTextToClipboard(generatedApiUrl, 'API URL copied to clipboard!');
                 }}
                 style={{
                   background: 'none',
@@ -1920,8 +1920,7 @@ const AdminPanel = () => {
                   <Button
                       onClick={() => {
                           const list = broadcastProgress.failedIds.join(', ');
-                          navigator.clipboard.writeText(list);
-                          alert('Copied ' + broadcastProgress.failedIds.length + ' IDs to clipboard');
+                          copyTextToClipboard(list, 'Copied failed IDs to clipboard');
                       }}
                       style={{ marginTop: '16px', background: 'rgba(255,77,77,0.1)', color: '#ff4d4d', height: '40px', fontSize: '0.75rem', border: '1px solid rgba(255,77,77,0.2)' }}
                   >
@@ -2076,10 +2075,10 @@ const AdminPanel = () => {
                 <div className="flex-row-between" style={{ marginBottom: '8px' }}>
                   <div>
                     <div style={{ fontWeight: '800', fontSize: '0.95rem' }}>
-                      {contest.title || (contest.type === 'refer' ? 'Referral Contest' : 'Earning Contest')}
+                      {contest.title || (contest.type === 'refer' ? 'Referral Contest' : contest.type === 'chest' ? 'Chest Contest' : 'Earning Contest')}
                     </div>
                     <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px' }}>
-                      {contest.type === 'refer' ? '👥 Referral' : '💰 Earning'} · {contest.winners} winner(s) · {contest.prizeType === 'tier' ? '🏆 Tier' : '🪙 $FEST'} prizes
+                      {contest.type === 'refer' ? '👥 Referral' : contest.type === 'chest' ? '🎁 Chest' : '💰 Earning'} · {contest.winners} winner(s) · {contest.prizeType === 'tier' ? '🏆 Tier' : '🪙 $FEST'} prizes
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -2187,6 +2186,7 @@ const AdminPanel = () => {
                 >
                   <option value="refer">Referral Contest</option>
                   <option value="earning">Earning Contest</option>
+                  <option value="chest">Chest Contest</option>
                 </select>
               </div>
 

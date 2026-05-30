@@ -8,6 +8,8 @@ const UserContext = createContext();
 export const UserProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [streakData, setStreakData] = useState(null);
+  const [streakLoading, setStreakLoading] = useState(true);
   const [writeAccessGranted, setWriteAccessGranted] = useState(() => {
     // Check localStorage first to avoid re-asking
     return localStorage.getItem('earn_fest_write_access') === 'true';
@@ -129,6 +131,80 @@ export const UserProvider = ({ children }) => {
     } catch (refreshError) {
        console.error('Refresh failed', refreshError);
     }
+  };
+
+  const fetchStreak = async (force = false) => {
+    if (!user?.telegramId) return;
+    if (streakData && !force) return streakData;
+    try {
+      const tg = window.Telegram?.WebApp;
+      const headers = {};
+      if (tg?.initData) headers['x-telegram-init-data'] = tg.initData;
+      const res = await axios.get(`${apiBase}/api/user/streak/${user.telegramId}`, { headers });
+      setStreakData(res.data);
+      return res.data;
+    } catch (e) {
+      console.error('Failed to fetch streak:', e);
+    } finally {
+      setStreakLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.telegramId) {
+      fetchStreak();
+    } else {
+      setStreakData(null);
+      setStreakLoading(true);
+    }
+  }, [user?.telegramId]);
+
+  const claimStreakMilestone = async (milestoneDay) => {
+    if (!user?.telegramId) return;
+    const tg = window.Telegram?.WebApp;
+    const headers = { 'Content-Type': 'application/json' };
+    if (tg?.initData) headers['x-telegram-init-data'] = tg.initData;
+    const res = await axios.post(`${apiBase}/api/user/streak/claim`, {
+      telegramId: user.telegramId
+    }, { headers });
+    const data = res.data;
+    setStreakData(prev => ({
+      ...prev,
+      claimedMilestones: [...(prev?.claimedMilestones || []), milestoneDay],
+      claimableMilestones: (prev?.claimableMilestones || []).filter(d => d !== milestoneDay)
+    }));
+    setUser(prev => ({
+      ...prev,
+      balance: (prev.balance || 0) + data.reward
+    }));
+    return data;
+  };
+
+  const continueStreak = async () => {
+    if (!user?.telegramId) return;
+    const tg = window.Telegram?.WebApp;
+    const headers = { 'Content-Type': 'application/json' };
+    if (tg?.initData) headers['x-telegram-init-data'] = tg.initData;
+
+    const res = await axios.post(`${apiBase}/api/user/streak/continue`, {
+      telegramId: user.telegramId
+    }, { headers });
+
+    const data = res.data;
+    setStreakData(prev => ({
+      ...prev,
+      streak: data.streak,
+      alreadyBookedToday: true,
+      lastStreakDate: new Date().toISOString()
+    }));
+
+    // Update local user context
+    setUser(prev => ({
+      ...prev,
+      dailyStreak: data.streak,
+      lastStreakDate: new Date().toISOString()
+    }));
+    return data;
   };
 
   const trackSpinAdView = async () => {
@@ -293,7 +369,7 @@ export const UserProvider = ({ children }) => {
 
   return (
     <UserContext.Provider value={{ 
-      user, setUser, loading, writeAccessGranted, refreshUser, addReward, playSpin, playSpinGame, playSlotGame, trackSpinAdView
+      user, setUser, loading, streakData, setStreakData, streakLoading, fetchStreak, claimStreakMilestone, continueStreak, writeAccessGranted, refreshUser, addReward, playSpin, playSpinGame, playSlotGame, trackSpinAdView
     }}>
       {children}
     </UserContext.Provider>

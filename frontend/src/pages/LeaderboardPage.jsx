@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, Button, GameCard } from '../components/UI';
-import { Trophy, Users, Medal, Crown, Timer, TrendingUp } from 'lucide-react';
+import { Trophy, Users, Medal, Crown, Timer, TrendingUp, Gift } from 'lucide-react';
 import { useConfig } from '../context/ConfigContext';
 import { useUser } from '../context/UserContext';
 import axios from 'axios';
@@ -11,6 +11,7 @@ const FEST_TO_USD = 0.00005;
 
 const TAB_REFERS = 'refers';
 const TAB_EARNING = 'earning';
+const TAB_CHESTS = 'chests';
 
 const LeaderboardPage = () => {
   const { apiBase } = useConfig();
@@ -43,7 +44,11 @@ const LeaderboardPage = () => {
   const headers = { 'x-telegram-init-data': tg?.initData };
 
   // Map frontend tab value to backend API type
-  const tabToApiType = (tab) => tab === 'refers' ? 'refer' : 'earning';
+  const tabToApiType = (tab) => {
+    if (tab === 'refers') return 'refer';
+    if (tab === 'chests') return 'chest';
+    return 'earning';
+  };
 
   // Fetch lifetime leaderboard for the active tab
   const fetchLeaderboard = useCallback(async (type) => {
@@ -69,7 +74,11 @@ const LeaderboardPage = () => {
   const fetchActiveContest = useCallback(async () => {
     setContestLoading(true);
     try {
-      const res = await axios.get(`${apiBase}/api/contests/active`, { headers });
+      const type = tabToApiType(activeTab);
+      const res = await axios.get(`${apiBase}/api/contests/active`, {
+        params: { type },
+        headers
+      });
       const { contest, leaderboard: cLeaderboard, myPosition } = res.data;
       setActiveContest(contest);
       setContestLeaderboard(cLeaderboard || []);
@@ -80,7 +89,7 @@ const LeaderboardPage = () => {
     } finally {
       setContestLoading(false);
     }
-  }, [apiBase]);
+  }, [apiBase, activeTab]);
 
   useEffect(() => {
     fetchLeaderboard(activeTab);
@@ -211,7 +220,11 @@ const LeaderboardPage = () => {
     const rank = index + 1;
     const cardStyle = showPrize ? getRankCardStyle(rank) : {};
     const rankIcon = showPrize ? getRankIcon(rank) : null;
-    const valueLabel = activeTab === TAB_REFERS ? 'REFERS' : '$FEST EARNED';
+    const valueLabel = activeTab === TAB_REFERS 
+      ? 'REFERS' 
+      : activeTab === TAB_CHESTS
+        ? '$FEST FROM CHESTS'
+        : '$FEST EARNED';
     const valueDisplay = activeTab === TAB_REFERS
       ? entry.value
       : formatBalance(entry.value);
@@ -311,6 +324,7 @@ const LeaderboardPage = () => {
         {[
           { id: TAB_REFERS, label: 'Refers', icon: Users },
           { id: TAB_EARNING, label: 'Earning', icon: TrendingUp },
+          { id: TAB_CHESTS, label: 'Chest', icon: Gift },
         ].map(({ id, label, icon: Icon }) => (
           <button
             key={id}

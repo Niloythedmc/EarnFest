@@ -12,35 +12,13 @@ const MAX_STREAK = 15;
 
 const DailyStreakModal = ({ onClose }) => {
   const navigate = useNavigate();
-  const { user, setUser } = useUser();
-  const tg = window.Telegram?.WebApp;
+  const { user, streakData, streakLoading, claimStreakMilestone, continueStreak } = useUser();
 
-  const [streakData, setStreakData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [continuing, setContinuing] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimedReward, setClaimedReward] = useState(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [error, setError] = useState(null);
-
-  // Fetch streak status on mount
-  useEffect(() => {
-    if (!user?.telegramId) return;
-    const fetchStreak = async () => {
-      try {
-        const headers = {};
-        if (tg?.initData) headers['x-telegram-init-data'] = tg.initData;
-        const res = await axios.get(`${apiBase}/api/user/streak/${user.telegramId}`, { headers });
-        setStreakData(res.data);
-      } catch (e) {
-        console.error('Failed to fetch streak:', e);
-        setError('Failed to load streak data');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStreak();
-  }, [user?.telegramId]);
 
   // Show RichAds interstitial first, then Adsgram
   const showStreakAds = async () => {
@@ -75,23 +53,11 @@ const DailyStreakModal = ({ onClose }) => {
     if (!user?.telegramId || claiming) return;
     setClaiming(true);
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (tg?.initData) headers['x-telegram-init-data'] = tg.initData;
-      const res = await axios.post(`${apiBase}/api/user/streak/claim`, {
-        telegramId: user.telegramId
-      }, { headers });
-      const data = res.data;
-      setClaimedReward(data);
-      setShowClaimModal(true);
-      setStreakData(prev => ({
-        ...prev,
-        claimedMilestones: [...(prev?.claimedMilestones || []), milestoneDay],
-        claimableMilestones: (prev?.claimableMilestones || []).filter(d => d !== milestoneDay)
-      }));
-      setUser(prev => ({
-        ...prev,
-        balance: (prev.balance || 0) + data.reward
-      }));
+      const data = await claimStreakMilestone(milestoneDay);
+      if (data) {
+        setClaimedReward(data);
+        setShowClaimModal(true);
+      }
     } catch (e) {
       console.error('Claim milestone error:', e);
     } finally {
@@ -109,30 +75,10 @@ const DailyStreakModal = ({ onClose }) => {
       await showStreakAds();
 
       // Then send request to backend
-      const headers = { 'Content-Type': 'application/json' };
-      if (tg?.initData) headers['x-telegram-init-data'] = tg.initData;
-
-      const res = await axios.post(`${apiBase}/api/user/streak/continue`, {
-        telegramId: user.telegramId
-      }, { headers });
-
-      const data = res.data;
-      setStreakData(prev => ({
-        ...prev,
-        streak: data.streak,
-        alreadyBookedToday: true,
-        lastStreakDate: new Date().toISOString()
-      }));
-
-      // Update local user context
-      setUser(prev => ({
-        ...prev,
-        dailyStreak: data.streak,
-        lastStreakDate: new Date().toISOString()
-      }));
+      const data = await continueStreak();
 
       // If today is a milestone day, show claim option and navigate to tasks
-      if (data.isMilestoneToday) {
+      if (data && data.isMilestoneToday) {
         // Show claim modal for the milestone
         setShowClaimModal(true);
       }
@@ -141,7 +87,7 @@ const DailyStreakModal = ({ onClose }) => {
       setTimeout(() => {
         onClose();
         // If milestone day, navigate to tasks page
-        if (data.isMilestoneToday) {
+        if (data && data.isMilestoneToday) {
           navigate('/tasks');
         }
       }, 1500);
@@ -154,7 +100,7 @@ const DailyStreakModal = ({ onClose }) => {
     }
   };
 
-  if (loading) {
+  if (streakLoading) {
     return (
       <div style={overlayStyle}>
         <div style={modalContainerStyle}>

@@ -10,53 +10,19 @@ const MILESTONE_DAYS = [1, 3, 7, 15];
 const MAX_STREAK = 15;
 
 const StreakMilestone = ({ compact = false }) => {
-  const { user, setUser } = useUser();
-  const tg = window.Telegram?.WebApp;
+  const { user, streakData, streakLoading, claimStreakMilestone } = useUser();
 
-  const [streakData, setStreakData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [claimedReward, setClaimedReward] = useState(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
-
-  useEffect(() => {
-    if (!user?.telegramId) return;
-    const fetchStreak = async () => {
-      try {
-        const headers = {};
-        if (tg?.initData) headers['x-telegram-init-data'] = tg.initData;
-        const res = await axios.get(`${apiBase}/api/user/streak/${user.telegramId}`, { headers });
-        setStreakData(res.data);
-      } catch (e) {
-        console.error('Failed to fetch streak:', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStreak();
-  }, [user?.telegramId]);
 
   const handleClaimMilestone = async (milestoneDay) => {
     if (!user?.telegramId || claiming) return;
     setClaiming(true);
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (tg?.initData) headers['x-telegram-init-data'] = tg.initData;
-      const res = await axios.post(`${apiBase}/api/user/streak/claim`, {
-        telegramId: user.telegramId
-      }, { headers });
-      const data = res.data;
+      const data = await claimStreakMilestone(milestoneDay);
       setClaimedReward(data);
       setShowClaimModal(true);
-      setStreakData(prev => ({
-        ...prev,
-        claimedMilestones: [...(prev?.claimedMilestones || []), milestoneDay],
-        claimableMilestones: (prev?.claimableMilestones || []).filter(d => d !== milestoneDay)
-      }));
-      setUser(prev => ({
-        ...prev,
-        balance: (prev.balance || 0) + data.reward
-      }));
     } catch (e) {
       console.error('Claim milestone error:', e);
     } finally {
@@ -64,7 +30,7 @@ const StreakMilestone = ({ compact = false }) => {
     }
   };
 
-  if (loading) {
+  if (streakLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '8px' }}>
         <Loader2 className="spin" size={16} color="var(--primary-gold)" />

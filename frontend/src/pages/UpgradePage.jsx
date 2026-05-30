@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { useTonConnectUI, useTonAddress, TonConnectButton } from '@tonconnect/ui-react';
 import { useLanguage } from '../context/LanguageContext';
 import { AdsClient } from '../utils/AdsClient';
@@ -204,8 +205,7 @@ const UpgradePage = () => {
   };
 
   const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard!');
+    copyTextToClipboard(text);
   };
 
   return (
