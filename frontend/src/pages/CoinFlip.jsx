@@ -81,7 +81,7 @@ const CoinFlip = () => {
         // Calculate new 3D rotation (spin multiple times and land on target)
         // Heads is 0 degrees (front), Tails is 180 degrees (back)
         const currentSpins = Math.floor(rotation / 360) * 360;
-        const extraTurns = 1440; // 4 full spins
+        const extraTurns = 2160; // 6 full spins
         const targetFaceDeg = res.flipResult === 'heads' ? 0 : 180;
         const newRotation = currentSpins + extraTurns + targetFaceDeg;
         
@@ -279,16 +279,16 @@ const CoinFlip = () => {
           onClick={handleFlip}
         >
           <motion.div
+            animate={{ rotateY: rotation }}
+            transition={{
+              duration: 1.5,
+              ease: [0.15, 0.85, 0.3, 1]
+            }}
             style={{
               width: '100%',
               height: '100%',
               position: 'absolute',
               transformStyle: 'preserve-3d',
-              transform: `rotateY(${rotation}deg)`
-            }}
-            transition={{
-              duration: 1.5,
-              ease: [0.25, 0.1, 0.25, 1.0]
             }}
           >
             {/* Front Side: Heads (Gold) */}
