@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { motion, useAnimation } from 'framer-motion';
-import { Sparkles, RotateCw, History } from 'lucide-react';
+import { motion, useAnimation, AnimatePresence } from 'framer-motion';
+import { Sparkles, RotateCw, History, PlayCircle } from 'lucide-react';
 import { Card, Button, GameButton, GameCard } from '../components/UI';
 import { useUser } from '../context/UserContext';
 import { useConfig } from '../context/ConfigContext';
 import { AdsClient } from '../utils/AdsClient';
 import { getPageTheme } from '../theme/pageThemes';
+import { encryptPayload } from '../utils/adCrypto';
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -22,6 +23,8 @@ const SpinWheel = () => {
   const [spinCount, setSpinCount] = useState(0);
   const [poolAmount, setPoolAmount] = useState(100000);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
+  const [showRewardModal, setShowRewardModal] = useState(false);
+  const [lastWinAmount, setLastWinAmount] = useState(0);
   const controls = useAnimation();
 
   // Wheel values: 20, 50, 100, 100, 200, 500, 500, 1000
@@ -53,6 +56,56 @@ const SpinWheel = () => {
 
     return () => clearInterval(timer);
   }, [cooldownRemaining]);
+
+  const handleWatchExtraAd = async (event) => {
+    if (!window.Adsgram) {
+      toast.error('Ad provider not loaded. Please try again.');
+      return;
+    }
+
+    try {
+      const blockId = '33471';
+      const adContext = 'SpinWheel';
+
+      // Telemetry payload
+      const clickX = event ? Math.round(event.clientX || 0) : 100;
+      const clickY = event ? Math.round(event.clientY || 0) : 100;
+      const handshakePayload = {
+        timestamp: Date.now(),
+        isTrusted: event ? event.isTrusted : true,
+        mouseTrail: [{ x: clickX, y: clickY, t: Date.now() }],
+        blockId,
+        adContext
+      };
+
+      const key = user?.hash || '';
+      const encrypted = encryptPayload(handshakePayload, key);
+
+      // Perform handshake
+      await axios.post(`${apiBase}/api/user/ad-watch/start`, { payload: encrypted });
+
+      // Load and show Adsgram ad
+      const AdController = window.Adsgram.init({ blockId });
+      const result = await AdController.show();
+
+      if (result && result.done) {
+        setShowRewardModal(false);
+        // Wait briefly for S2S callback transaction to complete on backend
+        toast.promise(
+          new Promise((resolve) => setTimeout(resolve, 2000))
+            .then(() => refreshUser()),
+          {
+            loading: 'Crediting extra reward...',
+            success: '20% Extra reward credited!',
+            error: 'Failed to update balance'
+          }
+        );
+      }
+    } catch (err) {
+      console.error('Failed to claim extra reward:', err);
+      toast.error(err.response?.data?.error || 'Ad verification failed');
+    }
+  };
 
   const handleSpin = async () => {
     const balance = user?.balance || 0;
@@ -120,6 +173,11 @@ const SpinWheel = () => {
       });
 
       refreshUser();
+
+      if (rewardAmount > 0) {
+        setLastWinAmount(rewardAmount);
+        setShowRewardModal(true);
+      }
 
       confetti({
         particleCount: rewardAmount > SPIN_COST ? 200 : 50,
@@ -256,6 +314,125 @@ const SpinWheel = () => {
            COST: {SPIN_COST} $FEST • COOLDOWN: 10S
         </p>
       </div>
+
+      <AnimatePresence>
+        {showRewardModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+              padding: '20px',
+              backdropFilter: 'blur(8px)'
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              style={{
+                width: '100%',
+                maxWidth: '340px',
+                background: 'linear-gradient(135deg, #0e1e12 0%, #030a05 100%)',
+                border: '2px solid var(--primary-gold)',
+                borderRadius: '24px',
+                padding: '24px',
+                textAlign: 'center',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.9), 0 0 20px rgba(255, 215, 0, 0.2)'
+              }}
+            >
+              <div style={{
+                width: '70px',
+                height: '70px',
+                background: 'rgba(255, 215, 0, 0.1)',
+                border: '1.5px solid var(--primary-gold)',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px'
+              }}>
+                <Sparkles size={36} className="gold-text" />
+              </div>
+
+              <h2 className="font-gaming gold-text" style={{ fontSize: '1.4rem', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '1px' }}>
+                Congratulations!
+              </h2>
+              
+              <p style={{ color: '#9ef0c2', fontSize: '0.85rem', marginBottom: '16px' }}>
+                You won <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#fff' }}>{lastWinAmount}</span> $FEST
+              </p>
+
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px dashed rgba(255, 215, 0, 0.2)',
+                borderRadius: '16px',
+                padding: '12px',
+                marginBottom: '24px'
+              }}>
+                <p style={{ margin: 0, fontSize: '0.72rem', color: '#88a695' }}>
+                  Boost your winnings by playing a quick video!
+                </p>
+                <div style={{ fontSize: '1.1rem', fontWeight: '900', color: 'var(--primary-gold)', marginTop: '4px' }}>
+                  +{(lastWinAmount * 0.2).toFixed(1)} $FEST Extra!
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button
+                  onClick={handleWatchExtraAd}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    padding: '14px',
+                    borderRadius: '14px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, var(--primary-gold), #ffd700)',
+                    color: '#000',
+                    fontWeight: '900',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 6px 20px rgba(255, 215, 0, 0.3)'
+                  }}
+                >
+                  <PlayCircle size={18} />
+                  +20% Extra
+                </button>
+
+                <button
+                  onClick={() => setShowRewardModal(false)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '14px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'transparent',
+                    color: '#88a695',
+                    fontWeight: '700',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  No thanks
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

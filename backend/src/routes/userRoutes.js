@@ -590,8 +590,9 @@ async function recordAndCheckAdCallback(telegramId, type) {
         return { error: 'Access denied: Ad watch session expired.', status: 400 };
       }
 
-      if (watch.adContext !== 'reward') {
-        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Context mismatch (expected reward, got ${watch.adContext})`);
+      const validContexts = ['reward', 'SpinWheel', 'SlotMachine'];
+      if (!validContexts.includes(watch.adContext)) {
+        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Context mismatch (expected reward/SpinWheel/SlotMachine, got ${watch.adContext})`);
         return { error: 'Access denied: Ad context mismatch.', status: 400 };
       }
 
@@ -620,6 +621,125 @@ async function recordAndCheckAdCallback(telegramId, type) {
   } catch (error) {
     console.error(`[recordAndCheckAdCallback] Error for user ${telegramId}:`, error);
     return { error: 'Database transaction error', status: 500 };
+  }
+}
+
+async function creditSpinWheelExtraReward(telegramId) {
+  const userRef = db.collection('users').doc(telegramId.toString());
+  try {
+    const result = await db.runTransaction(async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists) return { ok: false, error: 'User not found', status: 404 };
+
+      const userData = userDoc.data();
+      const lastSpinAt = userData.lastSpinAt || 0;
+      const lastSpinExtraClaimedAt = userData.lastSpinExtraClaimedAt || 0;
+
+      if (lastSpinAt === 0) {
+        return { ok: false, error: 'No spin wheel history found', status: 400 };
+      }
+
+      if (lastSpinExtraClaimedAt > lastSpinAt) {
+        return { ok: false, error: 'Extra reward already claimed for this spin', status: 400 };
+      }
+
+      const spinHistory = userData.spinHistory || [];
+      if (spinHistory.length === 0) {
+        return { ok: false, error: 'No spin records found', status: 400 };
+      }
+
+      const sorted = [...spinHistory].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const lastSpin = sorted[0];
+      const winAmount = lastSpin.amount || 0;
+
+      if (winAmount <= 0) {
+        transaction.update(userRef, {
+          lastSpinExtraClaimedAt: Date.now()
+        });
+        return { ok: true };
+      }
+
+      const extraReward = Number((winAmount * 0.20).toFixed(4));
+      const timestamp = new Date().toISOString();
+
+      transaction.update(userRef, {
+        balance: admin.firestore.FieldValue.increment(extraReward),
+        totalEarned: admin.firestore.FieldValue.increment(extraReward),
+        lastSpinExtraClaimedAt: Date.now(),
+        activities: admin.firestore.FieldValue.arrayUnion({
+          type: 'spin_wheel_extra',
+          baseAmount: winAmount,
+          amount: extraReward,
+          timestamp
+        })
+      });
+
+      return { ok: true };
+    });
+    return result;
+  } catch (error) {
+    console.error(`[creditSpinWheelExtraReward] Error for user ${telegramId}:`, error);
+    return { ok: false, error: 'Database transaction error', status: 500 };
+  }
+}
+
+async function creditSlotMachineExtraReward(telegramId) {
+  const userRef = db.collection('users').doc(telegramId.toString());
+  try {
+    const result = await db.runTransaction(async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists) return { ok: false, error: 'User not found', status: 404 };
+
+      const userData = userDoc.data();
+      const lastSlotAt = userData.lastSlotAt || 0;
+      const lastSlotExtraClaimedAt = userData.lastSlotExtraClaimedAt || 0;
+
+      if (lastSlotAt === 0) {
+        return { ok: false, error: 'No slot machine history found', status: 400 };
+      }
+
+      if (lastSlotExtraClaimedAt > lastSlotAt) {
+        return { ok: false, error: 'Extra reward already claimed for this slot play', status: 400 };
+      }
+
+      const activities = userData.activities || [];
+      const slots = activities.filter(a => a.type === 'slot_game');
+      if (slots.length === 0) {
+        return { ok: false, error: 'No slot activity found', status: 400 };
+      }
+
+      const sorted = [...slots].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const lastSlot = sorted[0];
+      const winAmount = lastSlot.payout || 0;
+
+      if (winAmount <= 0) {
+        transaction.update(userRef, {
+          lastSlotExtraClaimedAt: Date.now()
+        });
+        return { ok: true };
+      }
+
+      const extraReward = Number((winAmount * 0.20).toFixed(4));
+      const timestamp = new Date().toISOString();
+
+      transaction.update(userRef, {
+        balance: admin.firestore.FieldValue.increment(extraReward),
+        totalEarned: admin.firestore.FieldValue.increment(extraReward),
+        lastSlotExtraClaimedAt: Date.now(),
+        activities: admin.firestore.FieldValue.arrayUnion({
+          type: 'slot_machine_extra',
+          baseAmount: winAmount,
+          amount: extraReward,
+          timestamp
+        })
+      });
+
+      return { ok: true };
+    });
+    return result;
+  } catch (error) {
+    console.error(`[creditSlotMachineExtraReward] Error for user ${telegramId}:`, error);
+    return { ok: false, error: 'Database transaction error', status: 500 };
   }
 }
 
@@ -666,13 +786,27 @@ router.get('/reward/adsgram', async (req, res) => {
       return res.status(matchResult.status || 500).send(matchResult.error);
     }
 
+    const gameType = req.query.type;
+
     if (matchResult.triggerReward) {
-      const result = await creditAdRewardForTelegramId(telegramId);
-      if (!result.ok) {
-        if (result.code === 'not_found') return res.status(404).send('User not found');
-        if (result.code === 'cooldown') return res.status(429).send('Too Many Requests');
-        if (result.code === 'membership_required') return res.status(403).send('MEMBERSHIP_REQUIRED');
-        return res.status(result.status || 500).send('Error');
+      if (gameType === 'SpinWheel') {
+        const result = await creditSpinWheelExtraReward(telegramId);
+        if (!result.ok) {
+          return res.status(result.status || 500).send(result.error || 'Error');
+        }
+      } else if (gameType === 'SlotMachine') {
+        const result = await creditSlotMachineExtraReward(telegramId);
+        if (!result.ok) {
+          return res.status(result.status || 500).send(result.error || 'Error');
+        }
+      } else {
+        const result = await creditAdRewardForTelegramId(telegramId);
+        if (!result.ok) {
+          if (result.code === 'not_found') return res.status(404).send('User not found');
+          if (result.code === 'cooldown') return res.status(429).send('Too Many Requests');
+          if (result.code === 'membership_required') return res.status(403).send('MEMBERSHIP_REQUIRED');
+          return res.status(result.status || 500).send('Error');
+        }
       }
     }
 
@@ -1196,6 +1330,7 @@ router.post('/slot-game', validateINITData, async (req, res) => {
 
       transaction.update(userRef, {
         balance: newUserBalance,
+        lastSlotAt: now,
         activities: admin.firestore.FieldValue.arrayUnion({
           type: 'slot_game',
           bet: bet,

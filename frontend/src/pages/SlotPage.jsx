@@ -4,11 +4,13 @@ import { useUser } from '../context/UserContext';
 import { useConfig } from '../context/ConfigContext';
 import { Card, GameCard, GameButton, Badge, Stack } from '../components/UI';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { Info, AlertTriangle, Trophy, Coins, PlayCircle } from 'lucide-react';
+import { Info, AlertTriangle, Trophy, Coins, PlayCircle, Sparkles } from 'lucide-react';
 import { formatBalance } from '../utils/formatters';
+import { encryptPayload } from '../utils/adCrypto';
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import Lottie from 'lottie-react';
+import axios from 'axios';
 
 const LOTTIE_ASSETS = {
   win: "https://lottie.host/7e04f056-4c9d-433b-8580-f04495837651/2yYjXNfDPr.json",
@@ -103,14 +105,66 @@ const Reel = memo(({ spinning, targetIndex, delay, color }) => {
 
 const SlotPage = () => {
   const navigate = useNavigate();
-  const { user, playSlotGame } = useUser();
-  const { adminIds } = useConfig();
+  const { user, playSlotGame, refreshUser } = useUser();
+  const { adminIds, apiBase } = useConfig();
   const [betIndex, setBetIndex] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [results, setResults] = useState([0, 0, 0]);
   const [gameResult, setGameResult] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
   const [winAnimationData, setWinAnimationData] = useState(null);
+  const [showRewardModal, setShowRewardModal] = useState(false);
+  const [lastWinAmount, setLastWinAmount] = useState(0);
+
+  const handleWatchExtraAd = async (event) => {
+    if (!window.Adsgram) {
+      toast.error('Ad provider not loaded. Please try again.');
+      return;
+    }
+
+    try {
+      const blockId = '33472';
+      const adContext = 'SlotMachine';
+
+      // Telemetry payload
+      const clickX = event ? Math.round(event.clientX || 0) : 100;
+      const clickY = event ? Math.round(event.clientY || 0) : 100;
+      const handshakePayload = {
+        timestamp: Date.now(),
+        isTrusted: event ? event.isTrusted : true,
+        mouseTrail: [{ x: clickX, y: clickY, t: Date.now() }],
+        blockId,
+        adContext
+      };
+
+      const key = user?.hash || '';
+      const encrypted = encryptPayload(handshakePayload, key);
+
+      // Perform handshake
+      await axios.post(`${apiBase}/api/user/ad-watch/start`, { payload: encrypted });
+
+      // Load and show Adsgram ad
+      const AdController = window.Adsgram.init({ blockId });
+      const result = await AdController.show();
+
+      if (result && result.done) {
+        setShowRewardModal(false);
+        // Wait briefly for S2S callback transaction to complete on backend
+        toast.promise(
+          new Promise((resolve) => setTimeout(resolve, 2000))
+            .then(() => refreshUser()),
+          {
+            loading: 'Crediting extra reward...',
+            success: '20% Extra reward credited!',
+            error: 'Failed to update balance'
+          }
+        );
+      }
+    } catch (err) {
+      console.error('Failed to claim extra reward:', err);
+      toast.error(err.response?.data?.error || 'Ad verification failed');
+    }
+  };
   
   const audioRefs = useRef({});
   const tg = window.Telegram?.WebApp;
@@ -149,6 +203,10 @@ const SlotPage = () => {
             playSFX('win');
             confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
             tg?.HapticFeedback?.notificationOccurred('success');
+            setTimeout(() => {
+              setLastWinAmount(res.payout);
+              setShowRewardModal(true);
+            }, 2000);
           } else {
             playSFX('lose');
             tg?.HapticFeedback?.notificationOccurred('error');
@@ -355,6 +413,125 @@ const SlotPage = () => {
             style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(0,0,0,0.7)', pointerEvents: 'none' }}
           >
              <Lottie animationData={winAnimationData} style={{ height: 350 }} loop={false} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showRewardModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+              padding: '20px',
+              backdropFilter: 'blur(8px)'
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              style={{
+                width: '100%',
+                maxWidth: '340px',
+                background: 'linear-gradient(135deg, #1c0e2b 0%, #0a0312 100%)',
+                border: '2px solid #7000ff',
+                borderRadius: '24px',
+                padding: '24px',
+                textAlign: 'center',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.9), 0 0 20px rgba(112, 0, 255, 0.25)'
+              }}
+            >
+              <div style={{
+                width: '70px',
+                height: '70px',
+                background: 'rgba(112, 0, 255, 0.1)',
+                border: '1.5px solid #7000ff',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px'
+              }}>
+                <Sparkles size={36} style={{ color: '#00d4ff' }} />
+              </div>
+
+              <h2 className="font-gaming" style={{ fontSize: '1.4rem', color: '#00d4ff', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '1px', textShadow: '0 0 10px rgba(0,212,255,0.4)' }}>
+                Congratulations!
+              </h2>
+              
+              <p style={{ color: '#c4b5fd', fontSize: '0.85rem', marginBottom: '16px' }}>
+                You won <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#fff' }}>{lastWinAmount}</span> $FEST
+              </p>
+
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px dashed rgba(112, 0, 255, 0.25)',
+                borderRadius: '16px',
+                padding: '12px',
+                marginBottom: '24px'
+              }}>
+                <p style={{ margin: 0, fontSize: '0.72rem', color: '#a78bfa' }}>
+                  Boost your winnings by playing a quick video!
+                </p>
+                <div style={{ fontSize: '1.1rem', fontWeight: '900', color: '#00ffaa', marginTop: '4px' }}>
+                  +{(lastWinAmount * 0.2).toFixed(1)} $FEST Extra!
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button
+                  onClick={handleWatchExtraAd}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    padding: '14px',
+                    borderRadius: '14px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #7000ff, #00d4ff)',
+                    color: '#fff',
+                    fontWeight: '900',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 6px 20px rgba(112, 0, 255, 0.3)'
+                  }}
+                >
+                  <PlayCircle size={18} />
+                  +20% Extra
+                </button>
+
+                <button
+                  onClick={() => setShowRewardModal(false)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '14px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'transparent',
+                    color: '#a78bfa',
+                    fontWeight: '700',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  No thanks
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
