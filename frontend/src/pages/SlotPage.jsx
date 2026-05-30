@@ -137,11 +137,17 @@ const SlotPage = () => {
         adContext
       };
 
-      const key = user?.hash || '';
-      const encrypted = encryptPayload(handshakePayload, key);
+      const tg = window.Telegram?.WebApp;
+      const initData = tg?.initData;
+      let hash = 'dev-mode-fallback-hash';
+      if (initData) {
+        const urlParams = new URLSearchParams(initData);
+        hash = urlParams.get('hash') || 'dev-mode-fallback-hash';
+      }
+
+      const encrypted = encryptPayload(handshakePayload, hash);
 
       // Perform handshake
-      const tg = window.Telegram?.WebApp;
       await axios.post(
         `${apiBase}/api/user/ad-watch/start`, 
         { telegramId: user?.telegramId || tg?.initDataUnsafe?.user?.id?.toString(), payload: encrypted },
