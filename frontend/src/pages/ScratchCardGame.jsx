@@ -78,6 +78,7 @@ const ScratchCardGame = () => {
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
+  const moveCount = useRef(0);
 
   const activeTierKey = TIERS_KEYS[selectedInventoryTierIndex];
   const activeTier = TIERS_DETAILS[activeTierKey];
@@ -103,45 +104,56 @@ const ScratchCardGame = () => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width || 300;
-    canvas.height = rect.height || 140;
+    // Ensure we are drawing normally (source-over)
+    ctx.globalCompositeOperation = 'source-over';
 
-    // Draw white/silver scratch layer
-    const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(0.5, '#f3f4f6');
-    grad.addColorStop(1, '#e5e7eb');
+    // Clear
+    ctx.clearRect(0, 0, 300, 150);
+
+    // Create a luxury gold-champagne-silver metallic gradient
+    const grad = ctx.createLinearGradient(0, 0, 300, 150);
+    grad.addColorStop(0, '#cbd5e1'); // Silver
+    grad.addColorStop(0.2, '#fef08a'); // Champagne Gold
+    grad.addColorStop(0.5, '#ffffff'); // Platinum Highlight
+    grad.addColorStop(0.8, '#fef08a'); // Champagne Gold
+    grad.addColorStop(1, '#94a3b8'); // Darker metallic silver
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, 300, 150);
 
-    // Fine lines for a premium card surface look
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < canvas.width; i += 15) {
+    // Draw premium diagonal grid texture
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.25)'; // Soft gold lines
+    ctx.lineWidth = 1.5;
+    for (let i = -150; i < 300; i += 20) {
       ctx.beginPath();
       ctx.moveTo(i, 0);
-      ctx.lineTo(i, canvas.height);
-      ctx.stroke();
-    }
-    for (let j = 0; j < canvas.height; j += 15) {
-      ctx.beginPath();
-      ctx.moveTo(0, j);
-      ctx.lineTo(canvas.width, j);
+      ctx.lineTo(i + 150, 150);
       ctx.stroke();
     }
 
-    // Outer border for the scratch section
-    ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
+    // Gold inner border
+    ctx.strokeStyle = '#d4af37';
     ctx.lineWidth = 3;
-    ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+    ctx.strokeRect(3, 3, 294, 144);
 
-    // Scratch text guide
-    ctx.fillStyle = '#4b5563';
-    ctx.font = '900 12px "Outfit", sans-serif';
+    // Subtle dark gold pattern dots
+    ctx.fillStyle = 'rgba(212, 175, 55, 0.6)';
+    const points = [
+      { x: 30, y: 30 }, { x: 270, y: 30 },
+      { x: 30, y: 120 }, { x: 270, y: 120 },
+      { x: 150, y: 25 }, { x: 150, y: 125 }
+    ];
+    points.forEach(pt => {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Elegant text guide
+    ctx.fillStyle = '#1e293b';
+    ctx.font = '900 13px "Outfit", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('SCRATCH TO WIN', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('⭐ SCRATCH HERE ⭐', 150, 75);
   };
 
   const getMousePos = (e) => {
@@ -149,16 +161,22 @@ const ScratchCardGame = () => {
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     
+    let clientX, clientY;
     if (e.touches && e.touches.length > 0) {
-      return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top
-      };
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
     }
-    
+
+    const xCSS = clientX - rect.left;
+    const yCSS = clientY - rect.top;
+
+    // Convert CSS layout coordinate mapping to fixed 300x150 buffer resolution
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      x: (xCSS / rect.width) * 300,
+      y: (yCSS / rect.height) * 150
     };
   };
 
@@ -177,6 +195,11 @@ const ScratchCardGame = () => {
     const pos = getMousePos(e);
     scratch(pos.x, pos.y);
     lastPos.current = pos;
+
+    moveCount.current++;
+    if (moveCount.current % 3 === 0) {
+      calculateScratchPercentage();
+    }
   };
 
   const handleStopDrawing = () => {
@@ -194,11 +217,11 @@ const ScratchCardGame = () => {
     ctx.globalCompositeOperation = 'destination-out';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 28; 
+    ctx.lineWidth = 32; 
 
     ctx.beginPath();
     if (start) {
-      ctx.arc(x, y, 14, 0, Math.PI * 2);
+      ctx.arc(x, y, 16, 0, Math.PI * 2);
       ctx.fill();
     } else {
       ctx.moveTo(lastPos.current.x, lastPos.current.y);
@@ -212,16 +235,18 @@ const ScratchCardGame = () => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const imgData = ctx.getImageData(0, 0, 300, 150);
     const pixels = imgData.data;
     const totalPixels = pixels.length / 4;
     let clearedCount = 0;
     
+    // Check alpha values less than 128 to capture partially scratched areas
     for (let i = 3; i < pixels.length; i += 4) {
-      if (pixels[i] === 0) {
+      if (pixels[i] < 128) {
         clearedCount++;
       }
     }
+
     
     const percent = Math.round((clearedCount / totalPixels) * 100);
     setScratchPercent(percent);
@@ -479,7 +504,7 @@ const ScratchCardGame = () => {
       </div>
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
         <AnimatePresence mode="wait">
           {activeTab === 'shop' ? (
             <motion.div
@@ -525,65 +550,68 @@ const ScratchCardGame = () => {
                         marginBottom: '8px'
                       }}
                     >
-                      {/* Integrated Text Content Placed In Blank Space (lower 70% of card) */}
+                      {/* Integrated Text Content Placed In Blank Space (lower half of card) */}
                       <div
                         style={{
                           position: 'absolute',
-                          top: '32%', 
-                          left: '6%',
-                          right: '6%',
-                          bottom: '6%',
+                          top: '42%', 
+                          left: '8%',
+                          right: '8%',
+                          bottom: '8%',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          justifyContent: 'center',
+                          justifyContent: 'space-between',
                           textAlign: 'center',
-                          color: '#fff'
+                          color: '#fff',
+                          pointerEvents: 'none'
                         }}
                       >
                         <h4 style={{
-                          margin: '0 0 1px 0',
-                          fontSize: '0.85rem',
-                          fontWeight: '950',
-                          fontFamily: 'var(--font-gaming)',
+                          margin: 0,
+                          fontSize: '0.72rem',
+                          fontWeight: '900',
+                          fontFamily: '"Outfit", sans-serif',
                           textTransform: 'uppercase',
                           letterSpacing: '0.5px',
-                          color: '#ffffff',
-                          textShadow: '1px 1px 0px #042f1a, -1px -1px 0px #042f1a, 0 2px 4px rgba(0,0,0,0.8)'
+                          color: '#ffd700',
+                          textShadow: '1px 1px 0px #031c10, 0 1px 2px rgba(0,0,0,0.6)'
                         }}>
                           {tier.title}
                         </h4>
                         
-                        <span style={{
-                          fontSize: '0.52rem',
-                          letterSpacing: '1px',
-                          fontWeight: '900',
-                          color: '#ffd700',
-                          textShadow: '1px 1px 0px #042f1a, 0 1px 2px rgba(0,0,0,0.9)',
-                          opacity: 0.95
-                        }}>
-                          MAX PRIZE
-                        </span>
-                        <span style={{
-                          fontSize: '0.95rem',
-                          fontWeight: '950',
-                          margin: '0px 0 2px 0',
-                          color: '#ffffff',
-                          textShadow: '1.5px 1.5px 0px #042f1a, 0 2px 4px rgba(0,0,0,0.9)'
-                        }}>
-                          {tier.maxPrize} $FEST
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '2px 0' }}>
+                          <span style={{
+                            fontSize: '0.45rem',
+                            letterSpacing: '0.5px',
+                            fontWeight: '800',
+                            color: '#a7f3d0',
+                            opacity: 0.8,
+                            textShadow: '1px 1px 0px #031c10'
+                          }}>
+                            MAX PRIZE
+                          </span>
+                          <span style={{
+                            fontSize: '0.85rem',
+                            fontWeight: '950',
+                            fontFamily: 'monospace',
+                            color: '#ffffff',
+                            textShadow: '1px 1px 0px #031c10, 0 1.5px 3px rgba(0,0,0,0.8)'
+                          }}>
+                            {tier.maxPrize} $FEST
+                          </span>
+                        </div>
                         
                         <span style={{
-                          fontSize: '0.62rem',
-                          background: 'rgba(0, 31, 17, 0.8)',
-                          border: '1px solid rgba(255, 215, 0, 0.35)',
-                          borderRadius: '6px',
-                          padding: '1px 8px',
+                          fontSize: '0.52rem',
+                          background: 'rgba(0, 28, 16, 0.75)',
+                          border: '1px solid rgba(255, 215, 0, 0.25)',
+                          borderRadius: '4px',
+                          padding: '1px 6px',
                           fontWeight: '900',
                           color: '#ffd700',
                           textShadow: '1px 1px 0px #000',
-                          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.6)'
+                          boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.5)'
                         }}>
                           {tier.price} $FEST
                         </span>
@@ -723,16 +751,18 @@ const ScratchCardGame = () => {
                       <div
                         style={{
                           position: 'absolute',
-                          top: '32%',
+                          top: '36%',
                           left: '6%',
                           right: '6%',
-                          bottom: '7%',
+                          bottom: '6%',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
                           overflow: 'hidden',
-                          borderRadius: '12px'
+                          borderRadius: '12px',
+                          border: '2px solid rgba(212, 175, 55, 0.25)',
+                          boxShadow: 'inset 0 4px 10px rgba(0,0,0,0.6)'
                         }}
                       >
                         {availableCount === 0 && !isPlaying ? (
@@ -741,12 +771,12 @@ const ScratchCardGame = () => {
                             <ShoppingBag size={22} style={{ color: '#ffd700', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
                             <h4 style={{
                               margin: 0,
-                              fontSize: '0.85rem',
-                              fontWeight: '950',
-                              color: '#fff',
-                              textShadow: '1px 1px 0px #042f1a, 0 1px 2px rgba(0,0,0,0.8)'
+                              fontSize: '0.8rem',
+                              fontWeight: '900',
+                              color: '#ffd700',
+                              textShadow: '1px 1px 0px #031c10, 0 1px 2px rgba(0,0,0,0.8)'
                             }}>{activeTier.title}</h4>
-                            <span style={{ fontSize: '0.62rem', color: '#ffd700', textShadow: '1px 1px 0px #000' }}>0 Cards Available</span>
+                            <span style={{ fontSize: '0.58rem', color: '#a7f3d0', textShadow: '1px 1px 0px #000' }}>0 Cards Available</span>
                             <button
                               onClick={() => setActiveTab('shop')}
                               style={{
@@ -756,7 +786,7 @@ const ScratchCardGame = () => {
                                 border: 'none',
                                 padding: '4px 12px',
                                 borderRadius: '8px',
-                                fontSize: '0.65rem',
+                                fontSize: '0.62rem',
                                 fontWeight: 'bold',
                                 cursor: 'pointer'
                               }}
@@ -769,33 +799,35 @@ const ScratchCardGame = () => {
                           <div style={{ textAlign: 'center', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                             <h4 style={{
                               margin: 0,
-                              fontSize: '0.9rem',
-                              fontWeight: '950',
+                              fontSize: '0.85rem',
+                              fontWeight: '900',
                               textTransform: 'uppercase',
                               letterSpacing: '0.5px',
-                              textShadow: '1.5px 1.5px 0px #042f1a, 0 2px 4px rgba(0,0,0,0.9)'
+                              color: '#ffd700',
+                              textShadow: '1.5px 1.5px 0px #031c10, 0 2px 4px rgba(0,0,0,0.9)'
                             }}>
                               {activeTier.title}
                             </h4>
                             <span style={{
-                              fontSize: '0.7rem',
+                              fontSize: '0.65rem',
                               fontWeight: '900',
-                              color: '#ffd700',
-                              textShadow: '1px 1px 0px #042f1a, 0 1px 2px rgba(0,0,0,0.9)'
+                              color: '#ffffff',
+                              textShadow: '1px 1px 0px #031c10, 0 1px 2px rgba(0,0,0,0.9)'
                             }}>
-                              Inventory: <strong style={{ color: '#fff', fontSize: '0.85rem' }}>{availableCount}</strong>
+                              Inventory: <strong style={{ color: '#ffd700', fontSize: '0.75rem' }}>{availableCount}</strong>
                             </span>
                             <span style={{
-                              fontSize: '0.55rem',
+                              fontSize: '0.52rem',
                               letterSpacing: '0.5px',
-                              opacity: 0.75,
-                              textShadow: '1px 1px 0px #042f1a'
+                              color: '#a7f3d0',
+                              opacity: 0.9,
+                              textShadow: '1px 1px 0px #031c10'
                             }}>
                               TAP SCRATCH TO PLAY
                             </span>
                           </div>
                         ) : (
-                          /* Playing Mode: Render 6 boxes and white scratch layer */
+                          /* Playing Mode: Render 6 boxes and metallic scratch layer */
                           <div style={{ width: '100%', height: '100%', position: 'relative' }}>
                             
                             {/* 6 Boxes Grid (3 Columns, 2 Rows) */}
@@ -809,7 +841,7 @@ const ScratchCardGame = () => {
                                   gridTemplateRows: 'repeat(2, 1fr)',
                                   gap: '4px',
                                   padding: '4px',
-                                  background: 'rgba(0, 31, 17, 0.95)',
+                                  background: 'rgba(0, 24, 14, 0.95)',
                                   borderRadius: '10px'
                                 }}
                               >
@@ -817,8 +849,8 @@ const ScratchCardGame = () => {
                                   <div
                                     key={idx}
                                     style={{
-                                      background: 'rgba(255,255,255,0.03)',
-                                      border: '1px solid rgba(255,255,255,0.06)',
+                                      background: 'rgba(2, 48, 32, 0.45)',
+                                      border: '1px dashed rgba(212, 175, 55, 0.4)',
                                       borderRadius: '6px',
                                       display: 'flex',
                                       alignItems: 'center',
@@ -842,9 +874,11 @@ const ScratchCardGame = () => {
                               </div>
                             )}
 
-                            {/* White Scratch Layer Canvas (placed exactly over the boxes) */}
+                            {/* Metallic Scratch Layer Canvas (placed exactly over the boxes) */}
                             <canvas
                               ref={canvasRef}
+                              width={300}
+                              height={150}
                               onMouseDown={handleStartDrawing}
                               onMouseMove={handleDraw}
                               onMouseUp={handleStopDrawing}
