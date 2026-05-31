@@ -31,6 +31,7 @@ const PromotePage = lazy(() => import('./pages/PromotePage'));
 const OnlyTaskPage = lazy(() => import('./pages/OnlyTaskPage'));
 const FeaturedTaskPage = lazy(() => import('./pages/FeaturedTaskPage'));
 const CollaborationPage = lazy(() => import('./pages/CollaborationPage'));
+const ScratchCardGame = lazy(() => import('./pages/ScratchCardGame'));
 
 // Lightweight loading component
 const PageLoader = () => (
@@ -310,6 +311,7 @@ function AppShell() {
         <Route path="/spin" element={<SpinWheel />} />
         <Route path="/slots" element={<SlotPage />} />
         <Route path="/coinflip" element={<CoinFlip />} />
+        <Route path="/scratch" element={<ScratchCardGame />} />
         <Route path="/refer" element={<ReferralPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/upgrade" element={<UpgradePage />} />

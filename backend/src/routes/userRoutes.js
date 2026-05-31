@@ -2,7 +2,7 @@ import express from 'express';
 import admin, { db } from '../config/db.js';
 import { validateINITData } from '../middleware/auth.js';
 import { TIERS, REWARD_TYPES } from '../config/tiers.js';
-import { SPIN_WHEEL_PRIZES, SPIN_WHEEL_CONFIG, verifyProbabilityConfig } from '../config/gameProbabilities.js';
+import { SPIN_WHEEL_PRIZES, SPIN_WHEEL_CONFIG, verifyProbabilityConfig, SCRATCH_CARDS_CONFIG, getScratchCardReward } from '../config/gameProbabilities.js';
 import { sendTelegramPhoto } from '../utils/bot.js';
 import { recordNewUser, recordActiveUser, incrementSpins, adjustTotalBalance, updateUserSearchIndex, incrementGamePlays, recordGameActiveUser } from '../utils/stats.js';
 import { creditAdRewardForTelegramId } from '../utils/adReward.js';
@@ -1639,6 +1639,216 @@ router.post('/check-multi-account', validateINITData, async (req, res) => {
   } catch (error) {
     console.error('Multi-Account Check Error:', error);
     res.status(500).json({ error: 'Multi-account check failed' });
+  }
+});
+
+// Buy Scratch Card API
+router.post('/scratch/buy', validateINITData, async (req, res) => {
+  try {
+    const { cardType } = req.body;
+    const telegramId = req.telegramUser?.id;
+
+    if (!telegramId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!SCRATCH_CARDS_CONFIG[cardType]) {
+      return res.status(400).json({ error: 'Invalid card type' });
+    }
+
+    const config = SCRATCH_CARDS_CONFIG[cardType];
+    const userRef = db.collection('users').doc(telegramId.toString());
+
+    const result = await db.runTransaction(async (transaction) => {
+      const userSnap = await transaction.get(userRef);
+      if (!userSnap.exists) throw new Error('User not found');
+
+      const userData = userSnap.data();
+      const currentBalance = userData.balance || 0;
+
+      if (currentBalance < config.price) {
+        throw new Error(`Insufficient balance. You need ${config.price} $FEST to buy a ${config.label}.`);
+      }
+
+      // Decrement balance, increment count of cards for this cardType
+      const scratchCardsCount = userData.scratchCardsCount || {};
+      const newCount = (scratchCardsCount[cardType] || 0) + 1;
+      
+      const updatedCounts = {
+        ...scratchCardsCount,
+        [cardType]: newCount
+      };
+
+      const newBalance = currentBalance - config.price;
+
+      transaction.update(userRef, {
+        balance: newBalance,
+        scratchCardsCount: updatedCounts,
+        activities: admin.firestore.FieldValue.arrayUnion({
+          type: 'scratch_buy',
+          cardType,
+          price: config.price,
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      return { newBalance, updatedCounts };
+    });
+
+    res.json({
+      success: true,
+      newBalance: result.newBalance,
+      scratchCardsCount: result.updatedCounts
+    });
+  } catch (error) {
+    console.error('Scratch Card Buy Error:', error.message);
+    res.status(400).json({ error: error.message || 'Purchase failed' });
+  }
+});
+
+// Play (Scratch) Scratch Card API
+router.post('/scratch/play', validateINITData, async (req, res) => {
+  try {
+    const { cardType } = req.body;
+    const telegramId = req.telegramUser?.id;
+
+    if (!telegramId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!SCRATCH_CARDS_CONFIG[cardType]) {
+      return res.status(400).json({ error: 'Invalid card type' });
+    }
+
+    const config = SCRATCH_CARDS_CONFIG[cardType];
+    const userRef = db.collection('users').doc(telegramId.toString());
+    const poolRef = db.collection('soloPool').doc('pool');
+
+    const result = await db.runTransaction(async (transaction) => {
+      const [userSnap, poolSnap] = await Promise.all([
+        transaction.get(userRef),
+        transaction.get(poolRef)
+      ]);
+
+      if (!userSnap.exists) throw new Error('User not found');
+      const userData = userSnap.data();
+
+      const scratchCardsCount = userData.scratchCardsCount || {};
+      const currentCount = scratchCardsCount[cardType] || 0;
+
+      if (currentCount < 1) {
+        throw new Error(`You do not have any ${config.label}s in your inventory.`);
+      }
+
+      const currentPool = poolSnap.exists ? (poolSnap.data().amount || 0) : 0;
+
+      // 1. Determine diamond count (0 to 6) based on configuration and pool limits
+      const probs = config.probs; // Index represents 0 to 6 diamonds
+      
+      const affordableDiamondCounts = [];
+      for (let d = 0; d <= 6; d++) {
+        const reward = getScratchCardReward(cardType, d);
+        if (reward <= currentPool) {
+          affordableDiamondCounts.push(d);
+        }
+      }
+
+      let selectedDiamonds = 0;
+      const cryptoRandom = () => {
+        const randomBytes = crypto.randomBytes(4);
+        return randomBytes.readUInt32BE(0) / 0xffffffff;
+      };
+
+      const rand = cryptoRandom();
+      let cumulative = 0;
+      let rolledDiamonds = 0;
+
+      for (let d = 0; d <= 6; d++) {
+        cumulative += probs[d];
+        if (rand < cumulative) {
+          rolledDiamonds = d;
+          break;
+        }
+      }
+
+      if (affordableDiamondCounts.includes(rolledDiamonds)) {
+        selectedDiamonds = rolledDiamonds;
+      } else {
+        if (affordableDiamondCounts.length > 0) {
+          selectedDiamonds = Math.max(...affordableDiamondCounts);
+        } else {
+          selectedDiamonds = 0;
+        }
+      }
+
+      const reward = getScratchCardReward(cardType, selectedDiamonds);
+
+      // 2. Generate and shuffle grid
+      const grid = new Array(6).fill('bear');
+      for (let i = 0; i < selectedDiamonds; i++) {
+        grid[i] = 'diamond';
+      }
+
+      for (let i = grid.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [grid[i], grid[j]] = [grid[j], grid[i]];
+      }
+
+      // 3. Update database state
+      const newCount = currentCount - 1;
+      const updatedCounts = {
+        ...scratchCardsCount,
+        [cardType]: newCount
+      };
+
+      const newBalance = (userData.balance || 0) + reward;
+      const newPoolAmount = currentPool - reward;
+      const timestamp = new Date().toISOString();
+
+      const earnedUpdate = reward > 0 ? { totalEarned: admin.firestore.FieldValue.increment(reward) } : {};
+
+      transaction.update(userRef, {
+        balance: newBalance,
+        scratchCardsCount: updatedCounts,
+        ...earnedUpdate,
+        activities: admin.firestore.FieldValue.arrayUnion({
+          type: 'scratch_game',
+          cardType,
+          diamonds: selectedDiamonds,
+          reward,
+          grid,
+          timestamp
+        })
+      });
+
+      // Update the shared soloPool
+      if (poolSnap.exists) {
+        transaction.update(poolRef, {
+          amount: newPoolAmount,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      return {
+        grid,
+        reward,
+        newBalance,
+        updatedCounts,
+        poolAmount: newPoolAmount
+      };
+    });
+
+    // Update global stats
+    incrementSpins();
+    incrementGamePlays('scratch');
+    recordGameActiveUser('scratch', telegramId.toString());
+    adjustTotalBalance(result.reward);
+
+    res.json({
+      success: true,
+      grid: result.grid,
+      reward: result.reward,
+      newBalance: result.newBalance,
+      scratchCardsCount: result.updatedCounts,
+      poolAmount: result.poolAmount
+    });
+  } catch (error) {
+    console.error('Scratch Card Play Error:', error.message);
+    res.status(400).json({ error: error.message || 'Scratch failed' });
   }
 });
 

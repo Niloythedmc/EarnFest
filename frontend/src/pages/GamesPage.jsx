@@ -35,6 +35,13 @@ const GamesPage = () => {
       path: '/coinflip',
       image: '/CoinFlip.png'
     },
+    {
+      id: 'scratch',
+      title: 'Scratch Card',
+      labelKey: 'scratch',
+      path: '/scratch',
+      image: '/ScratchCard.jpg'
+    },
   ];
 
   return (

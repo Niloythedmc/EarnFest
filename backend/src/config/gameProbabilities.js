@@ -79,3 +79,62 @@ if (!verification.valid) {
 } else {
   console.log('✓ Game probability configuration verified and valid');
 }
+
+/**
+ * SCRATCH CARDS CONFIGURATION
+ */
+export const SCRATCH_CARDS_CONFIG = {
+  mini: {
+    price: 10,
+    maxPrize: 100,
+    label: 'Mini Scratch Card',
+    probs: [0.35, 0.40, 0.15, 0.06, 0.03, 0.009, 0.001] // Index represents diamond count 0 to 6
+  },
+  mega: {
+    price: 100,
+    maxPrize: 1000,
+    label: 'Mega Scratch Card',
+    probs: [0.35, 0.40, 0.15, 0.06, 0.03, 0.009, 0.001]
+  },
+  jackpot: {
+    price: 300,
+    maxPrize: 3000,
+    label: 'Jackpot Scratch Card',
+    probs: [0.40, 0.35, 0.15, 0.06, 0.03, 0.009, 0.001]
+  },
+  festillion: {
+    price: 500,
+    maxPrize: 5000,
+    label: 'Festillion Scratch Card',
+    probs: [0.45, 0.30, 0.15, 0.06, 0.03, 0.009, 0.001]
+  }
+};
+
+/**
+ * Calculate reward based on card type and diamond count
+ */
+export function getScratchCardReward(type, diamondCount) {
+  const card = SCRATCH_CARDS_CONFIG[type];
+  if (!card) return 0;
+
+  // Multipliers: 0=0%, 1=1%, 2=5%, 3=10%, 4=40%, 5=75%, 6=100%
+  const multipliers = [0.00, 0.01, 0.05, 0.10, 0.40, 0.75, 1.00];
+  const mult = multipliers[diamondCount] || 0;
+
+  if (diamondCount === 0) return 0;
+
+  // Reward must be in int and min 1
+  return Math.max(1, Math.floor(card.maxPrize * mult));
+}
+
+// Validate scratch card probabilities on load
+Object.entries(SCRATCH_CARDS_CONFIG).forEach(([type, card]) => {
+  const sum = card.probs.reduce((s, p) => s + p, 0);
+  if (Math.abs(sum - 1.0) > 0.0001) {
+    throw new Error(`CRITICAL: Scratch card ${type} probabilities sum to ${sum}, not 1.0!`);
+  }
+  if (card.probs.length !== 7) {
+    throw new Error(`CRITICAL: Scratch card ${type} must have exactly 7 probability weights (for 0-6 diamonds)!`);
+  }
+});
+

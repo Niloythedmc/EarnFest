@@ -396,9 +396,66 @@ export const UserProvider = ({ children }) => {
     }
   };
 
+  const buyScratchCard = async (cardType) => {
+    const tg = window.Telegram?.WebApp;
+    if (!user) return { success: false, error: 'User not found' };
+
+    try {
+      const response = await axios.post(`${apiBase}/api/user/scratch/buy`, { cardType }, {
+        headers: { 'x-telegram-init-data': tg?.initData || '' }
+      });
+      
+      if (response.data.success) {
+        setUser(prev => ({ 
+          ...prev, 
+          balance: response.data.newBalance,
+          scratchCardsCount: response.data.scratchCardsCount
+        }));
+        return {
+          success: true,
+          newBalance: response.data.newBalance,
+          scratchCardsCount: response.data.scratchCardsCount
+        };
+      }
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || 'Purchase failed';
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const playScratchCard = async (cardType) => {
+    const tg = window.Telegram?.WebApp;
+    if (!user) return { success: false, error: 'User not found' };
+
+    try {
+      const response = await axios.post(`${apiBase}/api/user/scratch/play`, { cardType }, {
+        headers: { 'x-telegram-init-data': tg?.initData || '' }
+      });
+      
+      if (response.data.success) {
+        setUser(prev => ({ 
+          ...prev, 
+          balance: response.data.newBalance,
+          scratchCardsCount: response.data.scratchCardsCount
+        }));
+        return {
+          success: true,
+          grid: response.data.grid,
+          reward: response.data.reward,
+          newBalance: response.data.newBalance,
+          scratchCardsCount: response.data.scratchCardsCount,
+          poolAmount: response.data.poolAmount
+        };
+      }
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || 'Scratch failed';
+      return { success: false, error: errorMsg };
+    }
+  };
+
   return (
     <UserContext.Provider value={{ 
-      user, setUser, loading, streakData, setStreakData, streakLoading, fetchStreak, claimStreakMilestone, continueStreak, writeAccessGranted, refreshUser, addReward, playSpin, playSpinGame, playSlotGame, trackSpinAdView, playCoinFlip
+      user, setUser, loading, streakData, setStreakData, streakLoading, fetchStreak, claimStreakMilestone, continueStreak, writeAccessGranted, refreshUser, addReward, playSpin, playSpinGame, playSlotGame, trackSpinAdView, playCoinFlip, buyScratchCard, playScratchCard
     }}>
       {children}
     </UserContext.Provider>
