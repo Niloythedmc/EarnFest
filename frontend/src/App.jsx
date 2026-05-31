@@ -165,7 +165,7 @@ function AppShell() {
     return () => tg.BackButton.offClick(handleBack);
   }, [location.pathname, navigate, tg]);
 
-  const hideNavbarRoutes = ['/spin', '/withdraw', '/upgrade'];
+  const hideNavbarRoutes = ['/spin', '/slots', '/coinflip', '/scratch', '/withdraw', '/upgrade'];
   const showNavbar = !hideNavbarRoutes.includes(location.pathname) && !isMaintenance;
 
   // --- Ban System Interceptor ---
