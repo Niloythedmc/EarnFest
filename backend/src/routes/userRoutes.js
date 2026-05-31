@@ -1645,7 +1645,7 @@ router.post('/check-multi-account', validateINITData, async (req, res) => {
 // Buy Scratch Card API
 router.post('/scratch/buy', validateINITData, async (req, res) => {
   try {
-    const { cardType } = req.body;
+    const { cardType, quantity } = req.body;
     const telegramId = req.telegramUser?.id;
 
     if (!telegramId) return res.status(401).json({ error: 'Unauthorized' });
@@ -1653,6 +1653,7 @@ router.post('/scratch/buy', validateINITData, async (req, res) => {
       return res.status(400).json({ error: 'Invalid card type' });
     }
 
+    const qty = Math.max(1, parseInt(quantity) || 1);
     const config = SCRATCH_CARDS_CONFIG[cardType];
     const userRef = db.collection('users').doc(telegramId.toString());
 
@@ -1662,21 +1663,22 @@ router.post('/scratch/buy', validateINITData, async (req, res) => {
 
       const userData = userSnap.data();
       const currentBalance = userData.balance || 0;
+      const totalPrice = config.price * qty;
 
-      if (currentBalance < config.price) {
-        throw new Error(`Insufficient balance. You need ${config.price} $FEST to buy a ${config.label}.`);
+      if (currentBalance < totalPrice) {
+        throw new Error(`Insufficient balance. You need ${totalPrice} $FEST to buy ${qty} ${config.label}.`);
       }
 
       // Decrement balance, increment count of cards for this cardType
       const scratchCardsCount = userData.scratchCardsCount || {};
-      const newCount = (scratchCardsCount[cardType] || 0) + 1;
+      const newCount = (scratchCardsCount[cardType] || 0) + qty;
       
       const updatedCounts = {
         ...scratchCardsCount,
         [cardType]: newCount
       };
 
-      const newBalance = currentBalance - config.price;
+      const newBalance = currentBalance - totalPrice;
 
       transaction.update(userRef, {
         balance: newBalance,
@@ -1684,7 +1686,8 @@ router.post('/scratch/buy', validateINITData, async (req, res) => {
         activities: admin.firestore.FieldValue.arrayUnion({
           type: 'scratch_buy',
           cardType,
-          price: config.price,
+          quantity: qty,
+          price: totalPrice,
           timestamp: new Date().toISOString()
         })
       });

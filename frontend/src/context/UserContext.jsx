@@ -396,12 +396,12 @@ export const UserProvider = ({ children }) => {
     }
   };
 
-  const buyScratchCard = async (cardType) => {
+  const buyScratchCard = async (cardType, quantity = 1) => {
     const tg = window.Telegram?.WebApp;
     if (!user) return { success: false, error: 'User not found' };
 
     try {
-      const response = await axios.post(`${apiBase}/api/user/scratch/buy`, { cardType }, {
+      const response = await axios.post(`${apiBase}/api/user/scratch/buy`, { cardType, quantity }, {
         headers: { 'x-telegram-init-data': tg?.initData || '' }
       });
       
