@@ -40,7 +40,7 @@ const GamesPage = () => {
       title: 'Scratch Card',
       labelKey: 'scratch',
       path: '/scratch',
-      image: '/ScratchCard.png'
+      image: '/ScratchCard_Tilted.png'
     },
   ];
 
