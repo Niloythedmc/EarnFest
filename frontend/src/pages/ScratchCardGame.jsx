@@ -75,6 +75,18 @@ const ScratchCardGame = () => {
   const [showWinModal, setShowWinModal] = useState(false);
   const [errorToast, setErrorToast] = useState('');
 
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 375);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isTablet = windowWidth >= 640;
+  const isLaptop = windowWidth >= 1024;
+  const columnsCount = isLaptop ? 4 : (isTablet ? 3 : 2);
+
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
@@ -383,9 +395,19 @@ const ScratchCardGame = () => {
         padding: '16px',
         overflowY: 'auto',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        alignItems: 'center'
       }}
     >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '680px',
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1
+        }}
+      >
       {/* Toast Notification */}
       <AnimatePresence>
         {errorToast && (
@@ -512,8 +534,13 @@ const ScratchCardGame = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="grid-cols-2"
-              style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${columnsCount}, 1fr)`,
+                gap: '16px',
+                width: '100%',
+                padding: '4px'
+              }}
             >
               {TIERS_KEYS.map((key) => {
                 const tier = TIERS_DETAILS[key];
@@ -521,17 +548,11 @@ const ScratchCardGame = () => {
                   <div
                     key={key}
                     style={{
-                      background: 'rgba(255, 255, 255, 0.01)',
-                      border: '1px solid rgba(255, 255, 255, 0.05)',
-                      borderRadius: '20px',
-                      padding: '10px',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      boxShadow: `0 8px 24px rgba(0, 0, 0, 0.25), 0 0 25px ${tier.glowColor}`,
                       position: 'relative',
-                      overflow: 'hidden'
+                      width: '100%'
                     }}
                   >
                     {/* Card template with ScratchCard.png background */}
@@ -539,15 +560,16 @@ const ScratchCardGame = () => {
                       style={{
                         width: '100%',
                         aspectRatio: '1.5',
-                        borderRadius: '12px',
+                        borderRadius: '16px',
                         backgroundImage: 'url(/ScratchCard.png)',
                         backgroundSize: '100% 100%',
                         backgroundRepeat: 'no-repeat',
                         position: 'relative',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                         overflow: 'hidden',
                         filter: tier.tintFilter,
-                        marginBottom: '8px'
+                        marginBottom: '10px',
+                        containerType: 'inline-size' // Enables relative size units (cqw) for text children
                       }}
                     >
                       {/* Integrated Text Content Placed In Blank Space (lower half of card) */}
@@ -569,7 +591,7 @@ const ScratchCardGame = () => {
                       >
                         <h4 style={{
                           margin: 0,
-                          fontSize: '0.72rem',
+                          fontSize: '7.2cqw',
                           fontWeight: '900',
                           fontFamily: '"Outfit", sans-serif',
                           textTransform: 'uppercase',
@@ -582,7 +604,7 @@ const ScratchCardGame = () => {
                         
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '2px 0' }}>
                           <span style={{
-                            fontSize: '0.45rem',
+                            fontSize: '4.2cqw',
                             letterSpacing: '0.5px',
                             fontWeight: '800',
                             color: '#a7f3d0',
@@ -592,7 +614,7 @@ const ScratchCardGame = () => {
                             MAX PRIZE
                           </span>
                           <span style={{
-                            fontSize: '0.85rem',
+                            fontSize: '8.8cqw',
                             fontWeight: '950',
                             fontFamily: 'monospace',
                             color: '#ffffff',
@@ -603,7 +625,7 @@ const ScratchCardGame = () => {
                         </div>
                         
                         <span style={{
-                          fontSize: '0.52rem',
+                          fontSize: '5.2cqw',
                           background: 'rgba(0, 28, 16, 0.75)',
                           border: '1px solid rgba(255, 215, 0, 0.25)',
                           borderRadius: '4px',
@@ -622,16 +644,17 @@ const ScratchCardGame = () => {
                     <button
                       onClick={() => setBuyingCard(tier)}
                       style={{
-                        width: '100%',
-                        background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        color: '#fff',
-                        padding: '10px 0',
+                        width: '90%',
+                        background: 'linear-gradient(135deg, #ffd700, #f59e0b)',
+                        border: 'none',
+                        color: '#000',
+                        padding: '8px 0',
                         borderRadius: '12px',
                         fontSize: '0.8rem',
-                        fontWeight: 'bold',
+                        fontWeight: '900',
                         cursor: 'pointer',
-                        transition: 'all 0.2s'
+                        transition: 'all 0.2s',
+                        boxShadow: '0 4px 12px rgba(245, 158, 11, 0.2)'
                       }}
                     >
                       Buy Card
@@ -742,7 +765,7 @@ const ScratchCardGame = () => {
                         backgroundSize: '100% 100%',
                         backgroundRepeat: 'no-repeat',
                         filter: activeTier.tintFilter,
-                        boxShadow: `0 20px 40px rgba(0,0,0,0.55), 0 0 35px ${activeTier.glowColor}`,
+                        boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)', // Removed colored glows
                         position: 'absolute',
                         overflow: 'hidden'
                       }}
@@ -751,10 +774,10 @@ const ScratchCardGame = () => {
                       <div
                         style={{
                           position: 'absolute',
-                          top: '36%',
-                          left: '6%',
-                          right: '6%',
-                          bottom: '6%',
+                          top: '40.5%',
+                          left: '7.5%',
+                          right: '7.5%',
+                          bottom: '7.5%',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
@@ -762,33 +785,36 @@ const ScratchCardGame = () => {
                           overflow: 'hidden',
                           borderRadius: '12px',
                           border: '2px solid rgba(212, 175, 55, 0.25)',
-                          boxShadow: 'inset 0 4px 10px rgba(0,0,0,0.6)'
+                          boxShadow: 'inset 0 4px 10px rgba(0,0,0,0.6)',
+                          containerType: 'inline-size' // Enables relative size units (cqw) for children
                         }}
                       >
                         {availableCount === 0 && !isPlaying ? (
                           /* Blank State inside the card */
-                          <div style={{ textAlign: 'center', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                            <ShoppingBag size={22} style={{ color: '#ffd700', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
+                          <div style={{ textAlign: 'center', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', width: '100%', padding: '0 8%' }}>
+                            <ShoppingBag size={20} style={{ color: '#ffd700', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
                             <h4 style={{
                               margin: 0,
-                              fontSize: '0.8rem',
+                              fontSize: '7.2cqw',
                               fontWeight: '900',
                               color: '#ffd700',
-                              textShadow: '1px 1px 0px #031c10, 0 1px 2px rgba(0,0,0,0.8)'
+                              textShadow: '1px 1px 0px #031c10, 0 1px 2px rgba(0,0,0,0.8)',
+                              textTransform: 'uppercase'
                             }}>{activeTier.title}</h4>
-                            <span style={{ fontSize: '0.58rem', color: '#a7f3d0', textShadow: '1px 1px 0px #000' }}>0 Cards Available</span>
+                            <span style={{ fontSize: '5.2cqw', color: '#a7f3d0', textShadow: '1px 1px 0px #000' }}>0 Cards Available</span>
                             <button
                               onClick={() => setActiveTab('shop')}
                               style={{
-                                marginTop: '4px',
+                                marginTop: '6%',
                                 background: '#ffd700',
                                 color: '#000',
                                 border: 'none',
-                                padding: '4px 12px',
-                                borderRadius: '8px',
-                                fontSize: '0.62rem',
-                                fontWeight: 'bold',
-                                cursor: 'pointer'
+                                padding: '3% 8%',
+                                borderRadius: '6px',
+                                fontSize: '5.5cqw',
+                                fontWeight: '900',
+                                cursor: 'pointer',
+                                boxShadow: '0 2px 6px rgba(255,215,0,0.3)'
                               }}
                             >
                               Go Shop
@@ -796,10 +822,10 @@ const ScratchCardGame = () => {
                           </div>
                         ) : !isPlaying ? (
                           /* Holds Cards - preview inside card */
-                          <div style={{ textAlign: 'center', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                          <div style={{ textAlign: 'center', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '100%', padding: '0 8%' }}>
                             <h4 style={{
                               margin: 0,
-                              fontSize: '0.85rem',
+                              fontSize: '8.2cqw',
                               fontWeight: '900',
                               textTransform: 'uppercase',
                               letterSpacing: '0.5px',
@@ -809,15 +835,15 @@ const ScratchCardGame = () => {
                               {activeTier.title}
                             </h4>
                             <span style={{
-                              fontSize: '0.65rem',
+                              fontSize: '6.2cqw',
                               fontWeight: '900',
                               color: '#ffffff',
                               textShadow: '1px 1px 0px #031c10, 0 1px 2px rgba(0,0,0,0.9)'
                             }}>
-                              Inventory: <strong style={{ color: '#ffd700', fontSize: '0.75rem' }}>{availableCount}</strong>
+                              Inventory: <strong style={{ color: '#ffd700', fontSize: '7.2cqw' }}>{availableCount}</strong>
                             </span>
                             <span style={{
-                              fontSize: '0.52rem',
+                              fontSize: '5.2cqw',
                               letterSpacing: '0.5px',
                               color: '#a7f3d0',
                               opacity: 0.9,
@@ -873,7 +899,7 @@ const ScratchCardGame = () => {
                                 ))}
                               </div>
                             )}
-
+ 
                             {/* Metallic Scratch Layer Canvas (placed exactly over the boxes) */}
                             <canvas
                               ref={canvasRef}
@@ -971,8 +997,24 @@ const ScratchCardGame = () => {
                         boxShadow: isSelected ? '0 4px 12px rgba(245, 158, 11, 0.1)' : 'none'
                       }}
                     >
-                      <span style={{ fontSize: '0.55rem', opacity: isSelected ? 1 : 0.5, fontWeight: '800', textTransform: 'uppercase', marginBottom: '4px' }}>{key}</span>
-                      <Gem size={14} style={{ color: isSelected ? '#ffd700' : 'rgba(255,255,255,0.4)' }} />
+                      <span style={{ fontSize: '0.55rem', opacity: isSelected ? 1 : 0.5, fontWeight: '800', textTransform: 'uppercase', marginBottom: '6px' }}>{key}</span>
+                      <div
+                        style={{
+                          width: '32px',
+                          aspectRatio: '1.5',
+                          backgroundImage: 'url(/ScratchCard.png)',
+                          backgroundSize: '100% 100%',
+                          backgroundRepeat: 'no-repeat',
+                          borderRadius: '3px',
+                          filter: TIERS_DETAILS[key].tintFilter,
+                          transform: 'rotate(-12deg) translateY(2px)',
+                          border: isSelected ? '1px solid rgba(255, 215, 0, 0.5)' : '1px solid rgba(255,255,255,0.2)',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                          transition: 'transform 0.2s',
+                          marginBottom: '4px',
+                          flexShrink: 0
+                        }}
+                      />
                       
                       {count > 0 && (
                         <span
@@ -1197,6 +1239,7 @@ const ScratchCardGame = () => {
         )}
       </AnimatePresence>
 
+      </div>
     </div>
   );
 };
