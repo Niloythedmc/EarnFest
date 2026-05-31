@@ -23,32 +23,32 @@ const TIERS_DETAILS = {
     title: 'Mini Scratch',
     price: 10,
     maxPrize: 100,
-    glowColor: 'rgba(16, 185, 129, 0.5)',
-    tintFilter: 'hue-rotate(0deg) saturate(1)', // Green (base)
+    glowColor: 'rgba(16, 185, 129, 0.45)',
+    tintFilter: 'hue-rotate(0deg) saturate(1.1)', // Green (base)
   },
   mega: {
     id: 'mega',
     title: 'Mega Scratch',
     price: 100,
     maxPrize: 1000,
-    glowColor: 'rgba(59, 130, 246, 0.6)',
-    tintFilter: 'hue-rotate(100deg) saturate(1.3) brightness(0.9)', // Blue
+    glowColor: 'rgba(59, 130, 246, 0.55)',
+    tintFilter: 'hue-rotate(100deg) saturate(1.4) brightness(0.9)', // Blue
   },
   jackpot: {
     id: 'jackpot',
     title: 'Jackpot Scratch',
     price: 300,
     maxPrize: 3000,
-    glowColor: 'rgba(168, 85, 247, 0.6)',
-    tintFilter: 'hue-rotate(190deg) saturate(1.5) brightness(0.9)', // Purple
+    glowColor: 'rgba(168, 85, 247, 0.55)',
+    tintFilter: 'hue-rotate(190deg) saturate(1.6) brightness(0.9)', // Purple
   },
   festillion: {
     id: 'festillion',
     title: 'Festillion Scratch',
     price: 500,
     maxPrize: 5000,
-    glowColor: 'rgba(245, 158, 11, 0.7)',
-    tintFilter: 'hue-rotate(-45deg) saturate(1.8) brightness(1.1)', // Gold/Orange
+    glowColor: 'rgba(245, 158, 11, 0.65)',
+    tintFilter: 'hue-rotate(-45deg) saturate(2) brightness(1.15)', // Gold/Orange
   }
 };
 
@@ -93,7 +93,6 @@ const ScratchCardGame = () => {
 
   useEffect(() => {
     if (isPlaying && canvasRef.current) {
-      // Small timeout to allow DOM node ref to resolve dimensions
       const timer = setTimeout(initCanvas, 50);
       return () => clearTimeout(timer);
     }
@@ -108,41 +107,41 @@ const ScratchCardGame = () => {
     canvas.width = rect.width || 300;
     canvas.height = rect.height || 140;
 
-    // Draw white/silver scratch layer with subtle texture
+    // Draw white/silver scratch layer
     const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    grad.addColorStop(0, '#f9fafb');
+    grad.addColorStop(0, '#ffffff');
     grad.addColorStop(0.5, '#f3f4f6');
     grad.addColorStop(1, '#e5e7eb');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw grid guide pattern
-    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    // Fine lines for a premium card surface look
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < canvas.width; i += 20) {
+    for (let i = 0; i < canvas.width; i += 15) {
       ctx.beginPath();
       ctx.moveTo(i, 0);
       ctx.lineTo(i, canvas.height);
       ctx.stroke();
     }
-    for (let j = 0; j < canvas.height; j += 20) {
+    for (let j = 0; j < canvas.height; j += 15) {
       ctx.beginPath();
       ctx.moveTo(0, j);
       ctx.lineTo(canvas.width, j);
       ctx.stroke();
     }
 
-    // Border
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-    ctx.lineWidth = 2;
+    // Outer border for the scratch section
+    ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
+    ctx.lineWidth = 3;
     ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
 
-    // Text instructions
-    ctx.fillStyle = '#4b5563'; // Gray-600
-    ctx.font = '900 13px "Outfit", sans-serif';
+    // Scratch text guide
+    ctx.fillStyle = '#4b5563';
+    ctx.font = '900 12px "Outfit", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('SCRATCH WITH FINGER', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('SCRATCH TO WIN', canvas.width / 2, canvas.height / 2);
   };
 
   const getMousePos = (e) => {
@@ -195,11 +194,11 @@ const ScratchCardGame = () => {
     ctx.globalCompositeOperation = 'destination-out';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 26; // Brush size
+    ctx.lineWidth = 28; 
 
     ctx.beginPath();
     if (start) {
-      ctx.arc(x, y, 13, 0, Math.PI * 2);
+      ctx.arc(x, y, 14, 0, Math.PI * 2);
       ctx.fill();
     } else {
       ctx.moveTo(lastPos.current.x, lastPos.current.y);
@@ -354,7 +353,7 @@ const ScratchCardGame = () => {
         right: 0,
         bottom: 0,
         zIndex: 99,
-        background: '#090a0f',
+        background: '#07090e',
         color: '#fff',
         padding: '16px',
         overflowY: 'auto',
@@ -394,34 +393,14 @@ const ScratchCardGame = () => {
       </AnimatePresence>
 
       {/* Header */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexShrink: 0 }}>
-        <button
-          onClick={() => navigate('/games')}
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '12px',
-            padding: '10px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff'
-          }}
-        >
-          <ArrowLeft size={20} />
-        </button>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: '30px', marginBottom: '14px', flexShrink: 0 }}>
         <h1 className="game-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.4rem', fontWeight: '900', margin: 0, background: 'linear-gradient(135deg, #ffd700, #f59e0b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
           <Trophy size={20} style={{ stroke: '#f59e0b', fill: '#ffd700' }} /> SCRATCH FEST
         </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.2)', padding: '6px 12px', borderRadius: '12px' }}>
-          <Coins size={14} className="gold-text" />
-          <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#ffd700' }}>{(user?.balance || 0).toLocaleString()}</span>
-        </div>
       </header>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.04)', padding: '4px', borderRadius: '14px', marginBottom: '20px', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.04)', padding: '4px', borderRadius: '14px', marginBottom: '16px', flexShrink: 0 }}>
         <button
           onClick={() => { if (!isPlaying) setActiveTab('shop'); }}
           style={{
@@ -469,7 +448,37 @@ const ScratchCardGame = () => {
         </button>
       </div>
 
-      {/* Main Content Areas */}
+      {/* Balance Section - Under the tab to occupy the blank space */}
+      <div
+        style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          borderRadius: '16px',
+          padding: '14px 18px',
+          width: '100%',
+          maxWidth: '350px',
+          margin: '0 auto 16px auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ background: 'rgba(255,215,0,0.1)', borderRadius: '10px', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Coins size={20} style={{ color: '#ffd700' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Your Balance</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace' }}>
+              {(user?.balance || 0).toLocaleString()} <span style={{ fontSize: '0.8rem', color: '#ffd700' }}>$FEST</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <AnimatePresence mode="wait">
           {activeTab === 'shop' ? (
@@ -487,64 +496,95 @@ const ScratchCardGame = () => {
                   <div
                     key={key}
                     style={{
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      background: 'rgba(255, 255, 255, 0.01)',
+                      border: '1px solid rgba(255, 255, 255, 0.05)',
                       borderRadius: '20px',
-                      padding: '12px',
+                      padding: '10px',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      boxShadow: `0 8px 24px rgba(0, 0, 0, 0.2), 0 0 20px ${tier.glowColor}`,
+                      boxShadow: `0 8px 24px rgba(0, 0, 0, 0.25), 0 0 25px ${tier.glowColor}`,
                       position: 'relative',
                       overflow: 'hidden'
                     }}
                   >
-                    {/* Card template with ScratchCard.jpg background */}
+                    {/* Card template with ScratchCard.png background */}
                     <div
                       style={{
                         width: '100%',
-                        aspectRatio: '1.45',
+                        aspectRatio: '1.5',
                         borderRadius: '12px',
-                        backgroundImage: 'url(/ScratchCard.jpg)',
+                        backgroundImage: 'url(/ScratchCard.png)',
                         backgroundSize: '100% 100%',
                         backgroundRepeat: 'no-repeat',
                         position: 'relative',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                         overflow: 'hidden',
                         filter: tier.tintFilter,
-                        marginBottom: '10px'
+                        marginBottom: '8px'
                       }}
                     >
-                      {/* Dynamic Content Placed In Blank Space (lower 70% of card) */}
+                      {/* Integrated Text Content Placed In Blank Space (lower 70% of card) */}
                       <div
                         style={{
                           position: 'absolute',
-                          top: '30%', // Avoid top dots header
-                          left: '8%',
-                          right: '8%',
-                          bottom: '5%',
+                          top: '32%', 
+                          left: '6%',
+                          right: '6%',
+                          bottom: '6%',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
                           textAlign: 'center',
-                          color: '#fff',
-                          textShadow: '0 2px 5px rgba(0,0,0,0.8)'
+                          color: '#fff'
                         }}
                       >
-                        <h4 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', fontWeight: '900', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                        <h4 style={{
+                          margin: '0 0 1px 0',
+                          fontSize: '0.85rem',
+                          fontWeight: '950',
+                          fontFamily: 'var(--font-gaming)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          color: '#ffffff',
+                          textShadow: '1px 1px 0px #042f1a, -1px -1px 0px #042f1a, 0 2px 4px rgba(0,0,0,0.8)'
+                        }}>
                           {tier.title}
                         </h4>
                         
-                        <span style={{ fontSize: '0.55rem', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold', color: '#ffd700' }}>
-                          PRIZE POOL
+                        <span style={{
+                          fontSize: '0.52rem',
+                          letterSpacing: '1px',
+                          fontWeight: '900',
+                          color: '#ffd700',
+                          textShadow: '1px 1px 0px #042f1a, 0 1px 2px rgba(0,0,0,0.9)',
+                          opacity: 0.95
+                        }}>
+                          MAX PRIZE
                         </span>
-                        <span style={{ fontSize: '0.9rem', fontWeight: '950', margin: '1px 0 3px 0' }}>
+                        <span style={{
+                          fontSize: '0.95rem',
+                          fontWeight: '950',
+                          margin: '0px 0 2px 0',
+                          color: '#ffffff',
+                          textShadow: '1.5px 1.5px 0px #042f1a, 0 2px 4px rgba(0,0,0,0.9)'
+                        }}>
                           {tier.maxPrize} $FEST
                         </span>
                         
-                        <span style={{ fontSize: '0.65rem', background: 'rgba(0,0,0,0.4)', padding: '2px 8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', fontWeight: 'bold' }}>
+                        <span style={{
+                          fontSize: '0.62rem',
+                          background: 'rgba(0, 31, 17, 0.8)',
+                          border: '1px solid rgba(255, 215, 0, 0.35)',
+                          borderRadius: '6px',
+                          padding: '1px 8px',
+                          fontWeight: '900',
+                          color: '#ffd700',
+                          textShadow: '1px 1px 0px #000',
+                          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.6)'
+                        }}>
                           {tier.price} $FEST
                         </span>
                       </div>
@@ -556,7 +596,7 @@ const ScratchCardGame = () => {
                       style={{
                         width: '100%',
                         background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.08)',
                         color: '#fff',
                         padding: '10px 0',
                         borderRadius: '12px',
@@ -587,7 +627,7 @@ const ScratchCardGame = () => {
                   background: 'rgba(255,255,255,0.04)',
                   borderRadius: '12px',
                   padding: '3px',
-                  marginBottom: '16px',
+                  marginBottom: '12px',
                   border: '1px solid rgba(255,255,255,0.05)',
                   opacity: isPlaying ? 1 : 0.4,
                   transition: 'opacity 0.2s',
@@ -635,10 +675,10 @@ const ScratchCardGame = () => {
               </div>
 
               {/* Floated 3D Card Area */}
-              <div style={{ width: '100%', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '280px', flexShrink: 0 }}>
+              <div style={{ width: '100%', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '260px', flexShrink: 0 }}>
                 
                 {!isPlaying && (
-                  <div style={{ position: 'absolute', top: 0, fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}>
+                  <div style={{ position: 'absolute', top: -10, fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}>
                     ← Swipe to Switch Categories →
                   </div>
                 )}
@@ -653,7 +693,7 @@ const ScratchCardGame = () => {
                   style={{
                     width: '92%',
                     maxWidth: '350px',
-                    aspectRatio: '1.45',
+                    aspectRatio: '1.5',
                     cursor: isPlaying ? (toolMode === 'scratcher' ? 'crosshair' : 'grab') : 'grab',
                     position: 'relative',
                     touchAction: isPlaying && toolMode === 'scratcher' ? 'none' : 'pan-y'
@@ -662,45 +702,51 @@ const ScratchCardGame = () => {
                   <AnimatePresence mode="wait">
                     <motion.div
                       key={activeTierKey}
-                      initial={{ opacity: 0, scale: 0.93, y: 10, rotateX: 5 }}
-                      animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
-                      exit={{ opacity: 0, scale: 0.93, y: -10, rotateX: -5 }}
+                      initial={{ opacity: 0, scale: 0.93, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.93, y: -10 }}
                       transition={{ duration: 0.2 }}
                       style={{
                         width: '100%',
                         height: '100%',
                         borderRadius: '24px',
-                        backgroundImage: 'url(/ScratchCard.jpg)',
+                        backgroundImage: 'url(/ScratchCard.png)',
                         backgroundSize: '100% 100%',
                         backgroundRepeat: 'no-repeat',
                         filter: activeTier.tintFilter,
-                        boxShadow: `0 20px 40px rgba(0,0,0,0.5), 0 0 35px ${activeTier.glowColor}`,
+                        boxShadow: `0 20px 40px rgba(0,0,0,0.55), 0 0 35px ${activeTier.glowColor}`,
                         position: 'absolute',
                         overflow: 'hidden'
                       }}
                     >
-                      {/* Blank Space Container (positioned over the bottom 70% of the image) */}
+                      {/* Blank Space Container (positioned over the bottom green area exactly) */}
                       <div
                         style={{
                           position: 'absolute',
-                          top: '30%',
-                          left: '8%',
-                          right: '8%',
-                          bottom: '8%',
+                          top: '32%',
+                          left: '6%',
+                          right: '6%',
+                          bottom: '7%',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
                           overflow: 'hidden',
-                          borderRadius: '16px'
+                          borderRadius: '12px'
                         }}
                       >
                         {availableCount === 0 && !isPlaying ? (
                           /* Blank State inside the card */
-                          <div style={{ textAlign: 'center', color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                            <ShoppingBag size={24} style={{ opacity: 0.4 }} />
-                            <h4 style={{ margin: 0, fontSize: '0.8rem', fontWeight: 'bold' }}>{activeTier.title}</h4>
-                            <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>0 Cards in Inventory</span>
+                          <div style={{ textAlign: 'center', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                            <ShoppingBag size={22} style={{ color: '#ffd700', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
+                            <h4 style={{
+                              margin: 0,
+                              fontSize: '0.85rem',
+                              fontWeight: '950',
+                              color: '#fff',
+                              textShadow: '1px 1px 0px #042f1a, 0 1px 2px rgba(0,0,0,0.8)'
+                            }}>{activeTier.title}</h4>
+                            <span style={{ fontSize: '0.62rem', color: '#ffd700', textShadow: '1px 1px 0px #000' }}>0 Cards Available</span>
                             <button
                               onClick={() => setActiveTab('shop')}
                               style={{
@@ -720,15 +766,32 @@ const ScratchCardGame = () => {
                           </div>
                         ) : !isPlaying ? (
                           /* Holds Cards - preview inside card */
-                          <div style={{ textAlign: 'center', color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                            <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: '900', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                          <div style={{ textAlign: 'center', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            <h4 style={{
+                              margin: 0,
+                              fontSize: '0.9rem',
+                              fontWeight: '950',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px',
+                              textShadow: '1.5px 1.5px 0px #042f1a, 0 2px 4px rgba(0,0,0,0.9)'
+                            }}>
                               {activeTier.title}
                             </h4>
-                            <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>
-                              Available: <strong style={{ color: '#ffd700', fontSize: '0.8rem' }}>{availableCount}</strong>
+                            <span style={{
+                              fontSize: '0.7rem',
+                              fontWeight: '900',
+                              color: '#ffd700',
+                              textShadow: '1px 1px 0px #042f1a, 0 1px 2px rgba(0,0,0,0.9)'
+                            }}>
+                              Inventory: <strong style={{ color: '#fff', fontSize: '0.85rem' }}>{availableCount}</strong>
                             </span>
-                            <span style={{ fontSize: '0.55rem', letterSpacing: '0.5px', opacity: 0.6 }}>
-                              CLICK SCRATCH TO PLAY
+                            <span style={{
+                              fontSize: '0.55rem',
+                              letterSpacing: '0.5px',
+                              opacity: 0.75,
+                              textShadow: '1px 1px 0px #042f1a'
+                            }}>
+                              TAP SCRATCH TO PLAY
                             </span>
                           </div>
                         ) : (
@@ -747,16 +810,16 @@ const ScratchCardGame = () => {
                                   gap: '4px',
                                   padding: '4px',
                                   background: 'rgba(0, 31, 17, 0.95)',
-                                  borderRadius: '12px'
+                                  borderRadius: '10px'
                                 }}
                               >
                                 {gameResult.grid.map((symbol, idx) => (
                                   <div
                                     key={idx}
                                     style={{
-                                      background: 'rgba(255,255,255,0.04)',
-                                      border: '1px solid rgba(255,255,255,0.08)',
-                                      borderRadius: '8px',
+                                      background: 'rgba(255,255,255,0.03)',
+                                      border: '1px solid rgba(255,255,255,0.06)',
+                                      borderRadius: '6px',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
@@ -768,7 +831,7 @@ const ScratchCardGame = () => {
                                         size={18}
                                         style={{
                                           color: '#00e5ff',
-                                          filter: 'drop-shadow(0 0 5px rgba(0, 229, 255, 0.5))'
+                                          filter: 'drop-shadow(0 0 5px rgba(0, 229, 255, 0.6))'
                                         }}
                                       />
                                     ) : (
@@ -796,7 +859,7 @@ const ScratchCardGame = () => {
                                 width: '100%',
                                 height: '100%',
                                 zIndex: 10,
-                                borderRadius: '12px',
+                                borderRadius: '10px',
                                 cursor: toolMode === 'scratcher' ? 'crosshair' : 'default',
                                 opacity: isRevealed ? 0 : 1,
                                 transition: 'opacity 0.4s ease-out',
@@ -812,7 +875,7 @@ const ScratchCardGame = () => {
               </div>
 
               {/* Control Action Button */}
-              <div style={{ marginTop: '16px', width: '100%', maxWidth: '350px', textAlign: 'center', flexShrink: 0 }}>
+              <div style={{ marginTop: '12px', width: '100%', maxWidth: '350px', textAlign: 'center', flexShrink: 0 }}>
                 {!isPlaying ? (
                   <button
                     onClick={handleInitScratch}
@@ -847,7 +910,7 @@ const ScratchCardGame = () => {
               </div>
 
               {/* Bottom selectors */}
-              <div style={{ display: 'flex', gap: '10px', marginTop: '24px', width: '100%', padding: '0 8px', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px', width: '100%', padding: '0 8px', justifyContent: 'center', flexShrink: 0 }}>
                 {TIERS_KEYS.map((key, index) => {
                   const count = user?.scratchCardsCount?.[key] || 0;
                   const isSelected = selectedInventoryTierIndex === index;
@@ -993,7 +1056,7 @@ const ScratchCardGame = () => {
                       style={{
                         flex: 1,
                         background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255, 255, 255, 0.06)',
                         color: '#fff',
                         padding: '14px 0',
                         borderRadius: '16px',
