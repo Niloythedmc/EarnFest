@@ -1,5 +1,5 @@
 import { db } from '../config/db.js';
-import { isSpecialUser } from './specialUsers.js';
+
 
 /**
  * Anti-Autoclicker Manager
@@ -50,9 +50,6 @@ export async function getUserAntiAutoClickerStats(telegramId) {
  * Verify interstitial session (prevent replay attacks)
  */
 export async function verifyInterstitialSession(telegramId, sessionId) {
-  if (isSpecialUser(telegramId)) {
-    return { valid: true };
-  }
   try {
     const userRef = db.collection('users').doc(telegramId.toString());
     const doc = await userRef.get();
@@ -101,9 +98,6 @@ function generateSessionId() {
  * Based on: rapid ad viewing, multiple failed captchas, etc.
  */
 export async function isSuspectedAutoClicker(telegramId) {
-  if (isSpecialUser(telegramId)) {
-    return false;
-  }
   try {
     const userRef = db.collection('users').doc(telegramId.toString());
     const doc = await userRef.get();
