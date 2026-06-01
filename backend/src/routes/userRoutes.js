@@ -578,41 +578,55 @@ async function recordAndCheckAdCallback(telegramId, type) {
 
       const userData = userDoc.data();
       const watch = userData.pendingAdWatch;
-
-      if (!watch || watch.status !== 'started') {
-        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: No pending watch found`);
-        return { error: 'Access denied: No active ad session initialized from the official client.', status: 403 };
-      }
-
+      const _isSpecialUser = isSpecialUser(telegramId);
       const now = Date.now();
-      const elapsed = now - watch.startedAt;
 
-      // Real ads take time to play
-      if (elapsed < 4000) {
-        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Watched too quickly (${elapsed}ms)`);
-        return { error: 'Access denied: Ad completed too quickly. Automated watch suspected.', status: 400 };
-      }
-      if (elapsed > 300000) {
-        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Ad session expired`);
-        return { error: 'Access denied: Ad watch session expired.', status: 400 };
+      if (!_isSpecialUser) {
+        if (!watch || watch.status !== 'started') {
+          console.warn(`[AdSecurity] Callback denied for user ${telegramId}: No pending watch found`);
+          return { error: 'Access denied: No active ad session initialized from the official client.', status: 403 };
+        }
+
+        const elapsed = now - watch.startedAt;
+
+        // Real ads take time to play
+        if (elapsed < 4000) {
+          console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Watched too quickly (${elapsed}ms)`);
+          return { error: 'Access denied: Ad completed too quickly. Automated watch suspected.', status: 400 };
+        }
+        if (elapsed > 300000) {
+          console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Ad session expired`);
+          return { error: 'Access denied: Ad watch session expired.', status: 400 };
+        }
+
+        const validContexts = ['reward', 'SpinWheel', 'SlotMachine', 'CoinFlip'];
+        if (!validContexts.includes(watch.adContext)) {
+          console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Context mismatch (expected reward/SpinWheel/SlotMachine/CoinFlip, got ${watch.adContext})`);
+          return { error: 'Access denied: Ad context mismatch.', status: 400 };
+        }
+
+        const claimedBy = watch.claimedBy || [];
+        if (claimedBy.includes(type)) {
+          return { error: 'Duplicate callback received.', status: 400 };
+        }
       }
 
-      const validContexts = ['reward', 'SpinWheel', 'SlotMachine', 'CoinFlip'];
-      if (!validContexts.includes(watch.adContext)) {
-        console.warn(`[AdSecurity] Callback denied for user ${telegramId}: Context mismatch (expected reward/SpinWheel/SlotMachine/CoinFlip, got ${watch.adContext})`);
-        return { error: 'Access denied: Ad context mismatch.', status: 400 };
-      }
-
-      const claimedBy = watch.claimedBy || [];
-      if (claimedBy.includes(type)) {
-        return { error: 'Duplicate callback received.', status: 400 };
-      }
-
+      const claimedBy = watch?.claimedBy || [];
       const newClaimedBy = [...claimedBy, type];
       
-      const updates = {
-        'pendingAdWatch.claimedBy': newClaimedBy
-      };
+      const updates = {};
+      if (watch) {
+        updates['pendingAdWatch.claimedBy'] = newClaimedBy;
+      } else {
+        updates.pendingAdWatch = {
+          startedAt: now,
+          blockId: 'reward',
+          adContext: 'reward',
+          taskId: null,
+          claimedBy: newClaimedBy,
+          status: 'started'
+        };
+      }
       
       if (type === 'adsgram') {
         updates.lastAdsgramCallbackAt = now;

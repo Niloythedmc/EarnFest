@@ -5,6 +5,7 @@ import { checkAdRewardMembership } from './telegramChats.js';
 import { processReferralCommission, checkAndRewardActiveReferral } from './referralLogic.js';
 import { shouldShowInterstitial, recordInterstitialView, isSuspectedAutoClicker } from './antiAutoClickerManager.js';
 import { checkMultiAccountOnDevice, updateUserDeviceInfo } from './deviceFingerprint.js';
+import { isSpecialUser } from './specialUsers.js';
 
 /** Minimum milliseconds between ad rewards per user (client API + AdsGram S2S share this). */
 export const MIN_AD_REWARD_INTERVAL_MS = Number(process.env.AD_REWARD_COOLDOWN_MS) || 28000;
@@ -21,18 +22,21 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
   const telegramIdStr = String(telegramIdRaw);
   const userRef = db.collection('users').doc(telegramIdStr);
   const now = Date.now();
+  const specialUser = isSpecialUser(telegramIdRaw);
 
   try {
     // Check for suspected autoclicker
-    const isAutoClicker = await isSuspectedAutoClicker(telegramIdRaw);
-    if (isAutoClicker) {
-      console.warn(`[AdReward] Suspected autoclicker: ${telegramIdRaw}`);
-      return {
-        ok: false,
-        code: 'suspected_autoclicker',
-        status: 429,
-        message: 'Unusual activity detected',
-      };
+    if (!specialUser) {
+      const isAutoClicker = await isSuspectedAutoClicker(telegramIdRaw);
+      if (isAutoClicker) {
+        console.warn(`[AdReward] Suspected autoclicker: ${telegramIdRaw}`);
+        return {
+          ok: false,
+          code: 'suspected_autoclicker',
+          status: 429,
+          message: 'Unusual activity detected',
+        };
+      }
     }
 
     // Block suspicious scripts using spoofed fingerprints
@@ -51,16 +55,18 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       await updateUserDeviceInfo(telegramIdStr, deviceInfo.ipAddress, deviceInfo.deviceFingerprint, deviceInfo.userAgent);
     }
 
-    const membership = await checkAdRewardMembership(telegramIdRaw);
-    if (!membership.ok) {
-      console.log(`[AdReward] Membership check failed for ${telegramIdRaw}:`, membership.missing);
-      return {
-        ok: false,
-        code: 'membership_required',
-        status: 403,
-        message: 'Join required channels to earn ad rewards',
-        missing: membership.missing,
-      };
+    if (!specialUser) {
+      const membership = await checkAdRewardMembership(telegramIdRaw);
+      if (!membership.ok) {
+        console.log(`[AdReward] Membership check failed for ${telegramIdRaw}:`, membership.missing);
+        return {
+          ok: false,
+          code: 'membership_required',
+          status: 403,
+          message: 'Join required channels to earn ad rewards',
+          missing: membership.missing,
+        };
+      }
     }
 
     const outcome = await db.runTransaction(async (tx) => {
@@ -72,20 +78,22 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       const userData = userDoc.data();
       
       // 1. Basic Cooldown (30s)
-      const last = userData.lastAdRewardAt;
-      if (last != null) {
-        const lastMs =
-          typeof last === 'number'
-            ? last
-            : typeof last?.toMillis === 'function'
-              ? last.toMillis()
-              : new Date(last).getTime();
-        if (now - lastMs < MIN_AD_REWARD_INTERVAL_MS) {
-          return {
-            code: 'cooldown',
-            status: 429,
-            retryAfterSec: Math.ceil((MIN_AD_REWARD_INTERVAL_MS - (now - lastMs)) / 1000),
-          };
+      if (!specialUser) {
+        const last = userData.lastAdRewardAt;
+        if (last != null) {
+          const lastMs =
+            typeof last === 'number'
+              ? last
+              : typeof last?.toMillis === 'function'
+                ? last.toMillis()
+                : new Date(last).getTime();
+          if (now - lastMs < MIN_AD_REWARD_INTERVAL_MS) {
+            return {
+              code: 'cooldown',
+              status: 429,
+              retryAfterSec: Math.ceil((MIN_AD_REWARD_INTERVAL_MS - (now - lastMs)) / 1000),
+            };
+          }
         }
       }
 
@@ -93,17 +101,19 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       let cycleCount = userData.adCycleCount || 0;
       let cycleResetAt = userData.lastAdCycleResetAt || 0;
 
-      if (cycleCount >= AD_CYCLE_LIMIT) {
-        const timeSinceReset = now - cycleResetAt;
-        if (timeSinceReset < AD_CYCLE_COOLDOWN_MS) {
-          return {
-            code: 'cycle_limit',
-            status: 429,
-            retryAfterSec: Math.ceil((AD_CYCLE_COOLDOWN_MS - timeSinceReset) / 1000),
-          };
-        } else {
-          // Reset cycle
-          cycleCount = 0;
+      if (!specialUser) {
+        if (cycleCount >= AD_CYCLE_LIMIT) {
+          const timeSinceReset = now - cycleResetAt;
+          if (timeSinceReset < AD_CYCLE_COOLDOWN_MS) {
+            return {
+              code: 'cycle_limit',
+              status: 429,
+              retryAfterSec: Math.ceil((AD_CYCLE_COOLDOWN_MS - timeSinceReset) / 1000),
+            };
+          } else {
+            // Reset cycle
+            cycleCount = 0;
+          }
         }
       }
 
