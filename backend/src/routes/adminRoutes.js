@@ -693,22 +693,22 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
       }
     }
 
-    // Handle Buttons
+    // Handle Buttons — filter out empty rows to avoid Telegram 400 errors
     let finalMarkup = null;
     const parsedButtons = typeof buttons === 'string' ? JSON.parse(buttons) : buttons;
-    if (Array.isArray(parsedButtons) && parsedButtons.length > 0) {
-      finalMarkup = {
-        inline_keyboard: [
-          parsedButtons.map(b => {
-            const btnObj = { text: b.title || b.text, url: b.link || b.url };
-            if (b.icon_custom_emoji_id) {
-              btnObj.icon_custom_emoji_id = b.icon_custom_emoji_id;
-            }
-            return btnObj;
-          })
-        ]
-      };
-    } else if (forwardedReplyMarkup) {
+    if (Array.isArray(parsedButtons)) {
+      const validButtons = parsedButtons
+        .filter(b => (b.title || b.text) && (b.link || b.url))
+        .map(b => {
+          const btnObj = { text: b.title || b.text, url: b.link || b.url };
+          if (b.icon_custom_emoji_id) btnObj.icon_custom_emoji_id = b.icon_custom_emoji_id;
+          return btnObj;
+        });
+      if (validButtons.length > 0) {
+        finalMarkup = { inline_keyboard: [validButtons] };
+      }
+    }
+    if (!finalMarkup && forwardedReplyMarkup) {
       finalMarkup = forwardedReplyMarkup;
     }
 
@@ -744,9 +744,12 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
             let targetUsers = [];
 
             if (filterType === 'targeted') {
+              // For targeted mode, the admin-supplied IDs ARE the Telegram user IDs.
+              // We set telegramId explicitly so the dispatch uses it correctly.
               const ids = (targetIds || '').split(/[,\n;]+/).map(id => id.trim()).filter(Boolean);
               for (const id of [...new Set(ids)]) {
-                  targetUsers.push({ telegramId: id, id });
+                  // Mark as trusted — no blocked check needed for manually targeted users
+                  targetUsers.push({ telegramId: id, id, _trusted: true });
               }
             } else {
                 // Broad filters - Using Paginated Query to handle large volumes (no limit)
@@ -839,10 +842,15 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
                 const startTime = Date.now();
 
                 await Promise.all(batch.map(async (user) => {
+                    // Resolve the Telegram chat_id.
+                    // For targeted mode, telegramId IS the Telegram user ID supplied by admin.
+                    // For db users, telegramId is stored field; fall back to doc id.
+                    const chatId = String(user.telegramId || user.id);
+
                     try {
-                        const chatId = user.telegramId || user.id;
-                        
-                        if (!isForce && user.blocked === true) {
+                        // Skip blocked users ONLY for non-targeted, non-forced sends
+                        if (!isForce && !user._trusted && user.blocked === true) {
+                            console.log(`[Broadcast] Skipping blocked user ${chatId}`);
                             failedIds.push(chatId);
                             return;
                         }
@@ -850,32 +858,31 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
                         let sendMethod = 'sendMessage';
                         let sendBody = {
                             chat_id: chatId,
-                            reply_markup: finalMarkup
                         };
+
+                        // Only attach reply_markup when it's valid (sendSticker supports it too)
+                        if (finalMarkup) sendBody.reply_markup = finalMarkup;
 
                         if (rawSticker && rawSticker.file_id) {
                             sendMethod = 'sendSticker';
                             sendBody.sticker = rawSticker.file_id;
+                            // Note: stickers can have reply_markup but NOT caption or parse_mode
                         } else if (rawAnimation && rawAnimation.file_id) {
                             sendMethod = 'sendAnimation';
                             sendBody.animation = rawAnimation.file_id;
-                            sendBody.caption = message || undefined;
-                            sendBody.parse_mode = 'HTML';
+                            if (message) { sendBody.caption = message; sendBody.parse_mode = 'HTML'; }
                         } else if (rawVideo && rawVideo.file_id) {
                             sendMethod = 'sendVideo';
                             sendBody.video = rawVideo.file_id;
-                            sendBody.caption = message || undefined;
-                            sendBody.parse_mode = 'HTML';
+                            if (message) { sendBody.caption = message; sendBody.parse_mode = 'HTML'; }
                         } else if (rawPhoto && rawPhoto.length > 0) {
                             sendMethod = 'sendPhoto';
                             sendBody.photo = rawPhoto[rawPhoto.length - 1].file_id;
-                            sendBody.caption = message || undefined;
-                            sendBody.parse_mode = 'HTML';
+                            if (message) { sendBody.caption = message; sendBody.parse_mode = 'HTML'; }
                         } else if (imageUrl) {
                             sendMethod = 'sendPhoto';
                             sendBody.photo = imageUrl;
-                            sendBody.caption = message || undefined;
-                            sendBody.parse_mode = 'HTML';
+                            if (message) { sendBody.caption = message; sendBody.parse_mode = 'HTML'; }
                         } else {
                             sendMethod = 'sendMessage';
                             sendBody.text = message || '';
@@ -883,34 +890,53 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
                         }
 
                         const token = process.env.TELEGRAM_BOT_TOKEN;
-                        await axios.post(`https://api.telegram.org/bot${token}/${sendMethod}`, sendBody);
-                        sent++;
-                    } catch (err) {
-                        // If the error is "bot can't initiate conversation" (user hasn't interacted), try sending anyway
-                        const errData = err.response?.data || { message: err.message };
-                        const errDesc = errData.description || '';
-                        
-                        // Retry with raw API call as last resort (some users may need different handling)
-                        if (errDesc.includes('bot can\'t initiate conversation') || errDesc.includes('chat not found') || errDesc.includes('Forbidden')) {
-                            // These users can't be reached - log and skip
-                            failedIds.push(user.telegramId || user.id);
+                        const tgRes = await axios.post(
+                            `https://api.telegram.org/bot${token}/${sendMethod}`,
+                            sendBody
+                        );
+
+                        if (tgRes.data?.ok) {
+                            sent++;
                         } else {
-                            // For other errors, try one more time with plain text (no HTML)
+                            // Telegram returned 200 but ok:false (shouldn't normally happen with axios)
+                            console.error(`[Broadcast] Telegram ok:false for ${chatId}:`, tgRes.data);
+                            failedIds.push(chatId);
+                        }
+
+                    } catch (err) {
+                        const errData = err.response?.data;
+                        const errDesc = errData?.description || err.message || 'Unknown error';
+                        const errCode = errData?.error_code;
+
+                        console.error(`[Broadcast] Failed to send to ${chatId} [${errCode}]: ${errDesc}`);
+
+                        // These are permanent failures — user is unreachable
+                        const permanent = [
+                            'bot was blocked by the user',
+                            'user is deactivated',
+                            'chat not found',
+                            'Forbidden',
+                            'bot can\'t initiate conversation'
+                        ];
+                        const isPermanent = permanent.some(p => errDesc.includes(p));
+
+                        if (isPermanent) {
+                            failedIds.push(chatId);
+                        } else if (errDesc.includes('can\'t parse entities') || errDesc.includes('Bad Request')) {
+                            // HTML parse error — retry with plain text fallback
                             try {
                                 const token = process.env.TELEGRAM_BOT_TOKEN;
-                                const plainText = message ? message.replace(/<[^>]*>/g, '') : '';
-                                if (plainText) {
-                                    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
-                                        chat_id: chatId,
-                                        text: plainText
-                                    });
-                                    sent++;
-                                } else {
-                                    failedIds.push(user.telegramId || user.id);
-                                }
+                                const plainText = (message || '').replace(/<[^>]*>/g, '');
+                                await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+                                    chat_id: chatId,
+                                    text: plainText || '📢 New message from admin'
+                                });
+                                sent++;
                             } catch {
-                                failedIds.push(user.telegramId || user.id);
+                                failedIds.push(chatId);
                             }
+                        } else {
+                            failedIds.push(chatId);
                         }
                     }
                 }));
