@@ -24,6 +24,98 @@ import TelegramPostRenderer from '../components/TelegramPostRenderer';
 import { formatBalance, formatCompactNumber } from '../utils/formatters';
 
 
+const parseTelegramEntities = (text, entities) => {
+  if (!text) return '';
+  if (!entities || entities.length === 0) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  const sortedEntities = [...entities].sort((a, b) => a.offset - b.offset || b.length - a.length);
+  const actions = [];
+
+  sortedEntities.forEach((entity, index) => {
+    let startTag = '';
+    let endTag = '';
+
+    switch (entity.type) {
+      case 'bold':
+        startTag = '<strong>';
+        endTag = '</strong>';
+        break;
+      case 'italic':
+        startTag = '<em>';
+        endTag = '</em>';
+        break;
+      case 'underline':
+        startTag = '<u>';
+        endTag = '</u>';
+        break;
+      case 'strikethrough':
+        startTag = '<s>';
+        endTag = '</s>';
+        break;
+      case 'code':
+        startTag = '<code>';
+        endTag = '</code>';
+        break;
+      case 'pre':
+        startTag = '<pre>';
+        endTag = '</pre>';
+        break;
+      case 'text_link':
+        startTag = `<a href="${entity.url}" target="_blank" rel="noopener noreferrer">`;
+        endTag = '</a>';
+        break;
+      case 'url': {
+        const urlStr = text.substring(entity.offset, entity.offset + entity.length);
+        startTag = `<a href="${urlStr.startsWith('http') ? urlStr : 'https://' + urlStr}" target="_blank" rel="noopener noreferrer">`;
+        endTag = '</a>';
+        break;
+      }
+      case 'custom_emoji':
+        startTag = `<tg-emoji emoji-id="${entity.custom_emoji_id || entity.document_id}">`;
+        endTag = '</tg-emoji>';
+        break;
+    }
+
+    if (startTag && endTag) {
+      actions.push({ index: entity.offset, type: 'start', tag: startTag, priority: index });
+      actions.push({ index: entity.offset + entity.length, type: 'end', tag: endTag, priority: index });
+    }
+  });
+
+  actions.sort((a, b) => {
+    if (a.index !== b.index) return a.index - b.index;
+    if (a.type !== b.type) return a.type === 'end' ? -1 : 1;
+    return a.type === 'end' ? b.priority - a.priority : a.priority - b.priority;
+  });
+
+  let result = '';
+  let lastIdx = 0;
+
+  actions.forEach((action) => {
+    const plainText = text.substring(lastIdx, action.index);
+    result += plainText
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    result += action.tag;
+    lastIdx = action.index;
+  });
+
+  const plainText = text.substring(lastIdx);
+  result += plainText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return result;
+};
+
 const AdminPanel = () => {
   const { apiBase } = useConfig();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -49,8 +141,7 @@ const AdminPanel = () => {
   const [chartTimeframe, setChartTimeframe] = useState('7d');
 
 
-  // Bot message states
-  const [botMsgType, setBotMsgType] = useState('write'); // 'write' or 'send'
+
   const [messageText, setMessageText] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -63,6 +154,8 @@ const AdminPanel = () => {
   const [sending, setSending] = useState(false);
   const [forceSend, setForceSend] = useState(false);
   const [forwardedMessage, setForwardedMessage] = useState(null);
+  const [bcRawFields, setBcRawFields] = useState(null);
+  const [isFetchingBcBotMsg, setIsFetchingBcBotMsg] = useState(false);
   const [sendSummary, setSendSummary] = useState(null);
   const [currentBroadcastId, setCurrentBroadcastId] = useState(null);
   const [broadcastProgress, setBroadcastProgress] = useState(null);
@@ -468,13 +561,13 @@ const AdminPanel = () => {
       fetchOffer();
       fetchGlobalSettings();
     }
-    if (activeTab === 'bot' && botMsgType === 'send') fetchForwardedMessage();
-
+    if (activeTab === 'bot') fetchForwardedMessage();
+ 
     if (activeTab === 'stats') {
       fetchGameAnalytics();
       fetchLiveActivity();
     }
-  }, [activeTab, botMsgType, leaderboardType]);
+  }, [activeTab, leaderboardType]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return;
@@ -531,13 +624,8 @@ const AdminPanel = () => {
 
   const handleSendBotMessage = async () => {
     // Basic validation
-    if (botMsgType === 'write' && !messageText && !imageFile) {
-      alert('Please provide a message or image');
-      return;
-    }
-
-    if (botMsgType === 'send' && !forwardedMessage) {
-      alert('No forwarded message available');
+    if (!messageText && !imageFile && !bcRawFields) {
+      alert('Please provide a message, image, or media');
       return;
     }
 
@@ -545,35 +633,22 @@ const AdminPanel = () => {
 
     try {
       const formData = new FormData();
-      formData.append('mode', botMsgType);
+      formData.append('mode', 'write');
 
       // === ALWAYS append image if one is selected ===
       if (imageFile) {
         formData.append('image', imageFile);
       }
 
-      // Handle message content based on mode
-      if (botMsgType === 'write') {
-        formData.append('message', messageText || '');  // Allow empty text if image is present
-      }
-      else if (botMsgType === 'send' && forwardedMessage) {
-        const forwardedText = forwardedMessage?.message?.text ||
-          forwardedMessage?.message?.caption || '';
-        const forwardedEntities = forwardedMessage?.message?.entities || [];
+      // Handle message content
+      formData.append('message', messageText || '');
 
-        formData.append('message', forwardedText);
-        formData.append('entities', JSON.stringify(forwardedEntities));
-
-        // Preserve caption entities if any
-        const captionEntities = forwardedMessage?.message?.caption_entities || [];
-        if (captionEntities.length > 0) {
-          formData.append('captionEntities', JSON.stringify(captionEntities));
-        }
-
-        // Preserve original reply_markup if exists
-        if (forwardedMessage?.message?.reply_markup) {
-          formData.append('replyMarkup', JSON.stringify(forwardedMessage.message.reply_markup));
-        }
+      // Append raw media fields from imported telegram message if no new image uploaded
+      if (!imageFile && bcRawFields) {
+        if (bcRawFields.photo) formData.append('photo', JSON.stringify(bcRawFields.photo));
+        if (bcRawFields.video) formData.append('video', JSON.stringify(bcRawFields.video));
+        if (bcRawFields.animation) formData.append('animation', JSON.stringify(bcRawFields.animation));
+        if (bcRawFields.sticker) formData.append('sticker', JSON.stringify(bcRawFields.sticker));
       }
 
       // Common fields
@@ -624,12 +699,76 @@ const AdminPanel = () => {
 
 
   const fetchForwardedMessage = async () => {
+    setIsFetchingBcBotMsg(true);
     try {
       const res = await axios.get(`${apiBase}/api/admin/bot/lastMessage`, { headers });
       setForwardedMessage(res.data);
+      if (res.data && res.data.message) {
+        toast.success('Successfully fetched latest message from bot!');
+      } else {
+        toast.error('No captured message found from bot.');
+      }
     } catch (e) {
       console.error(e);
+      toast.error('Failed to fetch message from bot: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setIsFetchingBcBotMsg(false);
     }
+  };
+
+  const handleApplyCapturedMessage = () => {
+    if (!forwardedMessage || !forwardedMessage.message) return;
+    const msg = forwardedMessage.message;
+    const text = msg.text || msg.caption || '';
+    const entities = msg.entities || msg.caption_entities || [];
+
+    // 1. Set message text (parsed HTML version containing <tg-emoji> etc)
+    const htmlText = parseTelegramEntities(text, entities);
+    setMessageText(htmlText);
+
+    // 2. Set buttons
+    const importedButtons = [];
+    if (msg.reply_markup && msg.reply_markup.inline_keyboard) {
+      msg.reply_markup.inline_keyboard.forEach(row => {
+        row.forEach(btn => {
+          importedButtons.push({
+            title: btn.text || '',
+            link: btn.url || '',
+            icon_custom_emoji_id: btn.icon_custom_emoji_id || ''
+          });
+        });
+      });
+    }
+    setButtons(importedButtons.length > 0 ? importedButtons : [{ title: '', link: '' }]);
+
+    // 3. Set raw media fields
+    const rawFields = {
+      photo: msg.photo || null,
+      video: msg.video || null,
+      animation: msg.animation || null,
+      sticker: msg.sticker || null
+    };
+    setBcRawFields(rawFields);
+
+    // 4. Set media type for visual feedback
+    if (msg.photo && msg.photo.length > 0) {
+      setImagePreview(`${apiBase}/api/admin/telegram-file?file_id=${msg.photo[msg.photo.length - 1].file_id}`);
+      setImageFile(null);
+    } else if (msg.animation) {
+      setImagePreview(`${apiBase}/api/admin/telegram-file?file_id=${msg.animation.file_id}`);
+      setImageFile(null);
+    } else if (msg.video) {
+      setImagePreview(`${apiBase}/api/admin/telegram-file?file_id=${msg.video.file_id}`);
+      setImageFile(null);
+    } else if (msg.sticker) {
+      setImagePreview(`${apiBase}/api/admin/telegram-file?file_id=${msg.sticker.file_id}`);
+      setImageFile(null);
+    } else {
+      setImagePreview(null);
+      setImageFile(null);
+    }
+
+    toast.success('Captured message data applied successfully!');
   };
 
   const handleCancelBroadcast = async () => {
@@ -1513,37 +1652,115 @@ const AdminPanel = () => {
   };
   const renderBotMessageTab = () => (
     <Stack gap={16}>
-      {/* Message Type Selection */}
+      {/* Import Message from Bot */}
       <Card style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
-        <p style={{ fontWeight: '800', fontSize: '0.8rem', marginBottom: '12px', opacity: 0.7 }}>MESSAGE MODE</p>
-        <div className="flex-row" style={{ gap: '12px' }}>
+        <div className="flex-row-between" style={{ marginBottom: '12px' }}>
+          <div>
+            <p style={{ fontWeight: '800', fontSize: '0.85rem', color: 'var(--primary-gold)' }}>IMPORT MESSAGE FROM BOT</p>
+            <p className="text-sm-muted" style={{ fontSize: '0.7rem' }}>Capture text, stickers, media & buttons from bot chat</p>
+          </div>
           <Button
-            onClick={() => setBotMsgType('write')}
-            style={{
-              flex: 1,
-              height: '44px',
-              background: botMsgType === 'write' ? 'var(--page-tint-medium)' : 'rgba(255,255,255,0.03)',
-              color: botMsgType === 'write' ? 'var(--primary-gold)' : 'var(--text-secondary)',
-              border: botMsgType === 'write' ? '1px solid var(--page-accent-border)' : '1px solid transparent'
-            }}
+            onClick={fetchForwardedMessage}
+            disabled={isFetchingBcBotMsg}
+            style={{ width: 'auto', padding: '0 12px', height: '32px', gap: '6px' }}
           >
-            <MessageSquare size={18} style={{ marginRight: '8px' }} />
-            Write Message
-          </Button>
-          <Button
-            onClick={() => setBotMsgType('send')}
-            style={{
-              flex: 1,
-              height: '44px',
-              background: botMsgType === 'send' ? 'var(--page-tint-medium)' : 'rgba(255,255,255,0.03)',
-              color: botMsgType === 'send' ? 'var(--primary-gold)' : 'var(--text-secondary)',
-              border: botMsgType === 'send' ? '1px solid var(--page-accent-border)' : '1px solid transparent'
-            }}
-          >
-            <Send size={18} style={{ marginRight: '8px' }} />
-            Send Bot Message
+            {isFetchingBcBotMsg ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />} Fetch Message
           </Button>
         </div>
+
+        {forwardedMessage ? (
+          <div style={{
+            padding: '16px',
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: '12px',
+            border: '1px dashed rgba(255,255,255,0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            {/* Live Render Preview */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {/* Media Preview (Photo/Video/Gif/Sticker) */}
+              {forwardedMessage.message?.sticker && (
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <img
+                    src={`${apiBase}/api/admin/telegram-file?file_id=${forwardedMessage.message.sticker.file_id}`}
+                    alt="Sticker"
+                    style={{ width: '120px', height: '120px', objectFit: 'contain' }}
+                  />
+                </div>
+              )}
+              {forwardedMessage.message?.photo && forwardedMessage.message.photo.length > 0 && (
+                <img
+                  src={`${apiBase}/api/admin/telegram-file?file_id=${forwardedMessage.message.photo[forwardedMessage.message.photo.length - 1].file_id}`}
+                  alt="Captured Photo"
+                  style={{ width: '100%', borderRadius: '8px', maxHeight: '200px', objectFit: 'cover' }}
+                />
+              )}
+              {forwardedMessage.message?.animation && (
+                <video
+                  src={`${apiBase}/api/admin/telegram-file?file_id=${forwardedMessage.message.animation.file_id}`}
+                  autoPlay
+                  loop
+                  muted
+                  style={{ width: '100%', borderRadius: '8px', maxHeight: '200px', objectFit: 'cover' }}
+                />
+              )}
+              {forwardedMessage.message?.video && (
+                <video
+                  src={`${apiBase}/api/admin/telegram-file?file_id=${forwardedMessage.message.video.file_id}`}
+                  controls
+                  style={{ width: '100%', borderRadius: '8px', maxHeight: '200px' }}
+                />
+              )}
+
+              {/* Parsed Text Preview */}
+              {(forwardedMessage.message?.text || forwardedMessage.message?.caption) && (
+                <div
+                  className="whitespace-pre-wrap break-words"
+                  style={{ fontSize: '0.85rem', lineHeight: '1.5' }}
+                  dangerouslySetInnerHTML={{
+                    __html: parseTelegramEntities(
+                      forwardedMessage.message.text || forwardedMessage.message.caption,
+                      forwardedMessage.message.entities || forwardedMessage.message.caption_entities
+                    )
+                  }}
+                />
+              )}
+            </div>
+
+            <Button
+              onClick={handleApplyCapturedMessage}
+              style={{
+                height: '36px',
+                background: 'rgba(212, 175, 55, 0.2)',
+                color: 'var(--primary-gold)',
+                border: '1px solid rgba(212, 175, 55, 0.3)',
+                fontSize: '0.8rem',
+                fontWeight: '700'
+              }}
+            >
+              Apply Captured Message Data
+            </Button>
+          </div>
+        ) : (
+          <div style={{
+            padding: '20px',
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: '12px',
+            border: '1px dashed rgba(255,255,255,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            <MessageSquare size={32} opacity={0.3} />
+            <p className="text-sm-muted" style={{ textAlign: 'center', fontSize: '0.8rem' }}>
+              Send a formatted message with custom emojis to the bot, then click Fetch.
+            </p>
+          </div>
+        )}
       </Card>
 
       {/* Image Upload */}
@@ -1586,7 +1803,7 @@ const AdminPanel = () => {
                 }}
               />
               <button
-                onClick={() => { setImageFile(null); setImagePreview(null); }}
+                onClick={() => { setImageFile(null); setImagePreview(null); setBcRawFields(null); }}
                 style={{
                   position: 'absolute',
                   top: '-8px',
@@ -1607,83 +1824,34 @@ const AdminPanel = () => {
             </div>
           )}
           <span className="text-sm-muted" style={{ fontSize: '0.75rem' }}>
-            {imageFile ? imageFile.name : 'Upload image (optional)'}
+            {imageFile ? imageFile.name : (bcRawFields ? 'Imported telegram media' : 'Upload image (optional)')}
           </span>
         </div>
       </Card>
 
-      {/* Message Input or Waiting Section */}
-      {botMsgType === 'write' ? (
-        <Card style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
-          <p style={{ fontWeight: '800', fontSize: '0.8rem', marginBottom: '12px', opacity: 0.7 }}>WRITE MESSAGE</p>
-          <textarea
-            value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
-            placeholder="Write your message here... Support HTML tags like <b>, <i>, <u>, <code>, <a>"
-            style={{
-              width: '100%',
-              minHeight: '150px',
-              background: 'rgba(0,0,0,0.3)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '12px',
-              padding: '14px',
-              color: 'white',
-              fontSize: '0.9rem',
-              resize: 'vertical'
-            }}
-          />
-          <p style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: '8px' }}>
-            💡 Tip: Use HTML formatting for better presentation
-          </p>
-        </Card>
-      ) : (
-        <Card style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
-          <div className="flex-row-between" style={{ marginBottom: '12px' }}>
-            <p style={{ fontWeight: '800', fontSize: '0.8rem', opacity: 0.7 }}>SEND BOT MESSAGE</p>
-            <Button onClick={fetchForwardedMessage} style={{ width: 'auto', padding: '0 12px', height: '32px', gap: '6px' }}>
-              <RefreshCw size={14} /> Refresh
-            </Button>
-          </div>
-          {forwardedMessage ? (
-            <div style={{
-              padding: '20px',
-              background: 'rgba(0,0,0,0.3)',
-              borderRadius: '12px',
-              border: '1px dashed rgba(255,255,255,0.2)',
-              minHeight: '150px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px'
-            }}>
-              <p style={{ fontSize: '0.85rem', lineHeight: '1.5' }}>
-                {forwardedMessage.message.text}
-              </p>
-              <p className="text-sm-muted" style={{ fontSize: '0.7rem', marginTop: 'auto' }}>
-                Received at {new Date(forwardedMessage.timestamp).toLocaleString()}
-              </p>
-            </div>
-          ) : (
-            <div style={{
-              padding: '20px',
-              background: 'rgba(0,0,0,0.3)',
-              borderRadius: '12px',
-              border: '1px dashed rgba(255,255,255,0.2)',
-              minHeight: '150px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'column',
-              gap: '12px'
-            }}>
-              <MessageSquare size={40} opacity={0.3} />
-              <p className="text-sm-muted" style={{ textAlign: 'center', fontSize: '0.85rem' }}>
-                Send a message to the bot<br />
-                It will appear here
-              </p>
-            </div>
-          )}
-        </Card>
-      )}
+      {/* Message Input */}
+      <Card style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
+        <p style={{ fontWeight: '800', fontSize: '0.8rem', marginBottom: '12px', opacity: 0.7 }}>WRITE / EDIT MESSAGE</p>
+        <textarea
+          value={messageText}
+          onChange={(e) => setMessageText(e.target.value)}
+          placeholder="Write or edit your message here... Support HTML tags like <b>, <i>, <u>, <code>, <a>, <tg-emoji emoji-id='...'>"
+          style={{
+            width: '100%',
+            minHeight: '150px',
+            background: 'rgba(0,0,0,0.3)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            padding: '14px',
+            color: 'white',
+            fontSize: '0.9rem',
+            resize: 'vertical'
+          }}
+        />
+        <p style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: '8px' }}>
+          💡 Tip: Use HTML formatting for better presentation.
+        </p>
+      </Card>
 
       {/* Buttons Builder */}
       <Card style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
@@ -1867,7 +2035,7 @@ const AdminPanel = () => {
       </Card>
 
       {/* Preview & Send */}
-      {((messageText || imagePreview) && botMsgType === 'write') || (botMsgType === 'send' && forwardedMessage) && (
+      {(messageText || imagePreview) && (
         <Card style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--primary-gold)' }}>
           <p style={{ fontWeight: '800', fontSize: '0.8rem', marginBottom: '12px', opacity: 0.7 }}>MESSAGE PREVIEW</p>
           <div style={{
@@ -1877,30 +2045,47 @@ const AdminPanel = () => {
             border: '1px solid rgba(255,255,255,0.1)'
           }}>
             {imagePreview && (
-              <img
-                src={imagePreview}
-                alt="Message"
-                style={{
-                  width: '100%',
-                  borderRadius: '8px',
-                  marginBottom: '12px',
-                  border: '1px solid var(--primary-gold)'
-                }}
-              />
-            )}
-            {botMsgType === 'write' ? (
-              <div style={{ fontSize: '0.85rem', lineHeight: '1.5' }}>
-                {messageText.split('\n').map((line, idx) => (
-                  <div key={idx}>{line}</div>
-                ))}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+                {bcRawFields?.sticker ? (
+                  <img
+                    src={`${apiBase}/api/admin/telegram-file?file_id=${bcRawFields.sticker.file_id}`}
+                    alt="Sticker"
+                    style={{ width: '120px', height: '120px', objectFit: 'contain' }}
+                  />
+                ) : bcRawFields?.animation ? (
+                  <video
+                    src={`${apiBase}/api/admin/telegram-file?file_id=${bcRawFields.animation.file_id}`}
+                    autoPlay
+                    loop
+                    muted
+                    style={{ width: '100%', borderRadius: '8px', maxHeight: '200px', objectFit: 'cover' }}
+                  />
+                ) : bcRawFields?.video ? (
+                  <video
+                    src={`${apiBase}/api/admin/telegram-file?file_id=${bcRawFields.video.file_id}`}
+                    controls
+                    style={{ width: '100%', borderRadius: '8px', maxHeight: '200px' }}
+                  />
+                ) : (
+                  <img
+                    src={imagePreview}
+                    alt="Message"
+                    style={{
+                      width: '100%',
+                      borderRadius: '8px',
+                      border: '1px solid var(--primary-gold)',
+                      maxHeight: '200px',
+                      objectFit: 'cover'
+                    }}
+                  />
+                )}
               </div>
-            ) : (
-              <TelegramPostRenderer
-                text={forwardedMessage?.message?.text || ''}
-                entities={forwardedMessage?.message?.entities || []}
-                style={{ fontSize: '0.85rem', lineHeight: '1.5' }}
-              />
             )}
+            <div
+              className="whitespace-pre-wrap break-words"
+              style={{ fontSize: '0.85rem', lineHeight: '1.5' }}
+              dangerouslySetInnerHTML={{ __html: messageText || '<span style="font-style: italic; opacity: 0.5;">No message content...</span>' }}
+            />
             {buttons.filter(b => b.title).length > 0 && (
               <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {buttons.filter(b => b.title).map((btn, idx) => (
@@ -1929,7 +2114,7 @@ const AdminPanel = () => {
 
       <Button
         onClick={handleSendBotMessage}
-        disabled={sending || currentBroadcastId || ((botMsgType === 'write' && !messageText && !imageFile) || (botMsgType === 'send' && !forwardedMessage))}
+        disabled={sending || currentBroadcastId || (!messageText && !imageFile && !bcRawFields)}
         style={{ height: '52px', marginTop: '10px' }}
       >
         {sending ? (

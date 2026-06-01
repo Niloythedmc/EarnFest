@@ -1001,3 +1001,47 @@ h2.heading-lg {
   flex-direction: column;
   gap: 20px;
 }
+
+/* --- Telegram Premium Emoji styling for admin previews --- */
+tg-emoji {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  background-color: #FEF3C7; /* amber-100 */
+  border: 1px solid #FCD34D; /* amber-300 */
+  border-radius: 4px;
+  color: #92400E; /* amber-800 */
+  font-size: 11px;
+  font-weight: bold;
+  vertical-align: middle;
+}
+
+/* Formatting tag styling inside Telegram preview bubbles */
+.whitespace-pre-wrap a,
+.break-words a {
+  color: #d4af37; /* gold */
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.whitespace-pre-wrap code,
+.break-words code {
+  background-color: rgba(255, 255, 255, 0.08);
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #ef4444;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.whitespace-pre-wrap pre,
+.break-words pre {
+  background-color: rgba(255, 255, 255, 0.08);
+  padding: 6px;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 11px;
+  margin: 4px 0;
+  overflow-x: auto;
+}

@@ -644,7 +644,11 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
       force,
       entities: entityPayload,
       captionEntities: captionEntityPayload,
-      replyMarkup: replyMarkupPayload
+      replyMarkup: replyMarkupPayload,
+      photo: photoPayload,
+      video: videoPayload,
+      animation: animationPayload,
+      sticker: stickerPayload
     } = req.body;
 
     const isForce = force === 'true' || force === true;
@@ -656,9 +660,20 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
       try { return JSON.parse(data); } catch (e) { return []; }
     };
 
+    const parseMedia = (data) => {
+      if (!data) return null;
+      if (typeof data === 'object') return data;
+      try { return JSON.parse(data); } catch (e) { return null; }
+    };
+
     const rawEntities = parsePayload(entityPayload);
     const rawCaptionEntities = parsePayload(captionEntityPayload);
     const forwardedReplyMarkup = replyMarkupPayload ? (typeof replyMarkupPayload === 'string' ? JSON.parse(replyMarkupPayload) : replyMarkupPayload) : null;
+
+    const rawPhoto = parseMedia(photoPayload);
+    const rawVideo = parseMedia(videoPayload);
+    const rawAnimation = parseMedia(animationPayload);
+    const rawSticker = parseMedia(stickerPayload);
 
     // Clean and normalize entities using advanced helper
     const entities = sanitizeTelegramEntities(message, rawEntities);
@@ -682,7 +697,17 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
     let finalMarkup = null;
     const parsedButtons = typeof buttons === 'string' ? JSON.parse(buttons) : buttons;
     if (Array.isArray(parsedButtons) && parsedButtons.length > 0) {
-      finalMarkup = { inline_keyboard: [parsedButtons.map(b => ({ text: b.title, url: b.link }))] };
+      finalMarkup = {
+        inline_keyboard: [
+          parsedButtons.map(b => {
+            const btnObj = { text: b.title || b.text, url: b.link || b.url };
+            if (b.icon_custom_emoji_id) {
+              btnObj.icon_custom_emoji_id = b.icon_custom_emoji_id;
+            }
+            return btnObj;
+          })
+        ]
+      };
     } else if (forwardedReplyMarkup) {
       finalMarkup = forwardedReplyMarkup;
     }
@@ -822,13 +847,43 @@ router.post('/bot/send', upload.single('image'), async (req, res) => {
                             return;
                         }
 
-                        if (imageUrl) {
-                            // Use the reliable sendTelegramPhoto utility
-                            await sendTelegramPhoto(chatId, imageUrl, message || '', finalMarkup);
+                        let sendMethod = 'sendMessage';
+                        let sendBody = {
+                            chat_id: chatId,
+                            reply_markup: finalMarkup
+                        };
+
+                        if (rawSticker && rawSticker.file_id) {
+                            sendMethod = 'sendSticker';
+                            sendBody.sticker = rawSticker.file_id;
+                        } else if (rawAnimation && rawAnimation.file_id) {
+                            sendMethod = 'sendAnimation';
+                            sendBody.animation = rawAnimation.file_id;
+                            sendBody.caption = message || undefined;
+                            sendBody.parse_mode = 'HTML';
+                        } else if (rawVideo && rawVideo.file_id) {
+                            sendMethod = 'sendVideo';
+                            sendBody.video = rawVideo.file_id;
+                            sendBody.caption = message || undefined;
+                            sendBody.parse_mode = 'HTML';
+                        } else if (rawPhoto && rawPhoto.length > 0) {
+                            sendMethod = 'sendPhoto';
+                            sendBody.photo = rawPhoto[rawPhoto.length - 1].file_id;
+                            sendBody.caption = message || undefined;
+                            sendBody.parse_mode = 'HTML';
+                        } else if (imageUrl) {
+                            sendMethod = 'sendPhoto';
+                            sendBody.photo = imageUrl;
+                            sendBody.caption = message || undefined;
+                            sendBody.parse_mode = 'HTML';
                         } else {
-                            // Use the reliable sendTelegramMessage utility with HTML parsing
-                            await sendTelegramMessage(chatId, message || '', finalMarkup, false);
+                            sendMethod = 'sendMessage';
+                            sendBody.text = message || '';
+                            sendBody.parse_mode = 'HTML';
                         }
+
+                        const token = process.env.TELEGRAM_BOT_TOKEN;
+                        await axios.post(`https://api.telegram.org/bot${token}/${sendMethod}`, sendBody);
                         sent++;
                     } catch (err) {
                         // If the error is "bot can't initiate conversation" (user hasn't interacted), try sending anyway
@@ -1047,6 +1102,44 @@ router.get('/telegram-proxy/getFile', async (req, res) => {
   } catch (error) {
     console.error('Custom emoji proxy error:', error.message);
     res.status(500).json({ error: 'Failed to fetch custom emoji' });
+  }
+});
+
+// Stream a file from Telegram by file_id
+router.get('/telegram-file', async (req, res) => {
+  try {
+    const { file_id } = req.query;
+    if (!file_id) {
+      return res.status(400).json({ error: 'file_id is required' });
+    }
+
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+      return res.status(500).json({ error: 'Bot token not configured' });
+    }
+
+    const getFileUrl = `https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(file_id)}`;
+    const getFileResponse = await axios.get(getFileUrl);
+
+    if (!getFileResponse.data.ok || !getFileResponse.data.result?.file_path) {
+      return res.status(404).json({ error: 'Could not resolve file path' });
+    }
+
+    const filePath = getFileResponse.data.result.file_path;
+    const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+
+    const downloadResponse = await axios({
+      method: 'get',
+      url: downloadUrl,
+      responseType: 'stream'
+    });
+
+    res.setHeader('Content-Type', downloadResponse.headers['content-type'] || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+    downloadResponse.data.pipe(res);
+  } catch (error) {
+    console.error('Error proxying telegram file:', error.message);
+    res.status(500).json({ error: 'Failed to proxy telegram file' });
   }
 });
 
