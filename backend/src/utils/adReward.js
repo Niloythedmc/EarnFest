@@ -76,7 +76,7 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
       }
 
       const userData = userDoc.data();
-      
+
       // 1. Basic Cooldown (30s)
       if (!specialUser) {
         const last = userData.lastAdRewardAt;
@@ -200,7 +200,7 @@ export async function creditAdRewardForTelegramId(telegramIdRaw, deviceInfo = {}
     if (outcome.referredBy) {
       // 20% Continuous Commission
       await processReferralCommission(outcome.telegramIdStr, outcome.rewardAmount, REWARD_TYPES.AD, outcome.referredBy);
-      
+
       // Check if user just became "Active" (1st ad + tasks + joins)
       await checkAndRewardActiveReferral(outcome.telegramIdStr);
     }
